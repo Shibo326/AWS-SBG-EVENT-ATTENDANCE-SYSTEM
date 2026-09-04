@@ -6,6 +6,7 @@ const jsQR = typeof jsQRModule === 'function' ? jsQRModule : jsQRModule?.default
 import { listEvents, anyApprovedToken, processScan, listAttendees } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
 import { formatDuration, formatTime } from '../lib/time.js'
+import { ArrowDown, ArrowUp, X, Check, Camera, CameraOff, Dice, Search, ArrowRight } from '../components/icons.jsx'
 
 // Module 4 gate scanner — jsQR + raw getUserMedia for full stream control.
 // Key improvements over html5-qrcode:
@@ -15,9 +16,9 @@ import { formatDuration, formatTime } from '../lib/time.js'
 //   • focusTap: clicking the viewport triggers a one-shot pointOfInterest refocus
 
 const FEEDBACK = {
-  in:       { bg: 'bg-brand-green',     label: 'CHECKED IN',  icon: '↓' },
-  out:      { bg: 'bg-brand-amberDark', label: 'CHECKED OUT', icon: '↑' },
-  rejected: { bg: 'bg-brand-red',       label: 'REJECTED',    icon: '✕' },
+  in:       { bg: 'bg-brand-green',     label: 'CHECKED IN',  Icon: ArrowDown },
+  out:      { bg: 'bg-brand-amberDark', label: 'CHECKED OUT', Icon: ArrowUp },
+  rejected: { bg: 'bg-brand-red',       label: 'REJECTED',    Icon: X },
 }
 
 export default function GateScanner() {
@@ -112,7 +113,7 @@ export default function GateScanner() {
 
         // Update debug info every 30 frames (~0.5s)
         if (frameCountRef.current % 30 === 0) {
-          setDebugInfo(`${vw}×${vh} · frame ${frameCountRef.current}${code ? ' · ✓ DECODED' : ''}`)
+          setDebugInfo(`${vw}x${vh} · frame ${frameCountRef.current}${code ? ' · decoded' : ''}`)
         }
 
         if (code) doScan(code.data)
@@ -247,7 +248,7 @@ export default function GateScanner() {
           role="status"
           aria-live="assertive"
         >
-          <div className="text-8xl font-black leading-none" aria-hidden="true">{fb.icon}</div>
+          <fb.Icon size={104} strokeWidth={2.5} />
           <div className="mt-3 font-display text-4xl font-bold uppercase tracking-widest">{fb.label}</div>
           {flash.r.attendee && (
             <div className="mt-6 font-display text-5xl font-bold leading-tight">{flash.r.attendee.full_name}</div>
@@ -259,7 +260,7 @@ export default function GateScanner() {
               <span className="tabular">{formatTime(flash.r.at)}</span>
               {flash.r.stats.isEligible && (
                 <div className="mt-4 inline-flex items-center gap-2 rounded-full bg-white/25 px-5 py-1.5 text-lg font-semibold">
-                  ✓ Certificate eligible
+                  <Check size={20} /> Certificate eligible
                 </div>
               )}
             </div>
@@ -320,7 +321,7 @@ export default function GateScanner() {
                           <span className="block truncate font-medium">{a.full_name}</span>
                           <span className="block truncate text-xs text-white/50">{a.email}</span>
                         </span>
-                        <span className="text-white/40">›</span>
+                        <ArrowRight size={16} className="text-white/40" />
                       </button>
                     </li>
                   ))}
@@ -386,7 +387,7 @@ export default function GateScanner() {
             <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
               {cameraError ? (
                 <>
-                  <div className="text-3xl" aria-hidden="true">🚫</div>
+                  <CameraOff size={40} className="text-red-400" />
                   <p className="max-w-xs px-4 text-sm text-red-400">{cameraError}</p>
                   <button
                     onClick={startCamera}
@@ -397,7 +398,7 @@ export default function GateScanner() {
                 </>
               ) : (
                 <>
-                  <div className="text-5xl" aria-hidden="true">📷</div>
+                  <Camera size={44} className="text-white/50" />
                   <p className="text-sm text-white/60">Tap to start camera</p>
                   <button
                     onClick={startCamera}
@@ -443,15 +444,15 @@ export default function GateScanner() {
           <div className="grid grid-cols-2 gap-2.5">
             <button
               onClick={simulate}
-              className="h-11 rounded-xl border border-white/20 text-sm text-white/80 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/20 text-sm text-white/80 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
-              🎲 Simulate scan
+              <Dice size={16} />Simulate scan
             </button>
             <button
               onClick={() => setLookupOpen(true)}
-              className="h-11 rounded-xl border border-white/20 text-sm text-white/80 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
+              className="flex h-11 items-center justify-center gap-2 rounded-xl border border-white/20 text-sm text-white/80 transition-colors hover:bg-white/5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-white/40"
             >
-              🔎 Manual lookup
+              <Search size={16} />Manual lookup
             </button>
           </div>
         </div>

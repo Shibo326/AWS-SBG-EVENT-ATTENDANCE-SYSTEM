@@ -1,4 +1,5 @@
 import { Button } from '../components/ui.jsx'
+import { ArrowLeft } from '../components/icons.jsx'
 
 export default function NotFound() {
   return (
@@ -6,7 +7,7 @@ export default function NotFound() {
       <div className="text-center animate-rise">
         <div className="font-display text-7xl font-bold tracking-tight text-brand-ink">404</div>
         <p className="mt-3 text-brand-muted">This page doesn&rsquo;t exist or the link has expired.</p>
-        <Button className="mt-6" to="/admin">← Back to events</Button>
+        <Button className="mt-6" to="/admin"><ArrowLeft size={16} />Back to events</Button>
       </div>
     </div>
   )

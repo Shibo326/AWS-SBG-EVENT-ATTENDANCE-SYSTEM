@@ -1,17 +1,18 @@
 import { Link, useParams, useLocation } from 'react-router-dom'
 import { getEvent, eventTypeInfo } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
+import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight } from './icons.jsx'
 
 const NAV = [
-  { key: '', label: 'Dashboard', icon: '📊' },
-  { key: 'registrations', label: 'Registrations', icon: '📝' },
-  { key: 'settings', label: 'Settings', icon: '⚙️' },
-  { key: 'export', label: 'Eligibility & Export', icon: '🎓' },
+  { key: '', label: 'Dashboard', icon: Grid },
+  { key: 'registrations', label: 'Registrations', icon: FileText },
+  { key: 'settings', label: 'Settings', icon: Settings },
+  { key: 'export', label: 'Eligibility & Export', icon: GradCap },
 ]
 
 // Standalone links that appear below the event nav (not event-scoped paths)
 const NAV_STANDALONE = [
-  { href: '/scan', label: 'Gate Scanner', icon: '📷' },
+  { href: '/scan', label: 'Gate Scanner', icon: Camera },
 ]
 
 export default function AdminLayout({ children }) {
@@ -36,9 +37,9 @@ export default function AdminLayout({ children }) {
           {eventId && (
             <Link
               to="/admin"
-              className="rounded-full px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm text-white/70 transition-colors hover:bg-white/10 hover:text-white"
             >
-              ← All events
+              <ArrowLeft size={16} />All events
             </Link>
           )}
         </div>
@@ -67,6 +68,7 @@ export default function AdminLayout({ children }) {
             <nav className="space-y-1">
               {NAV.map((item) => {
                 const active = currentSeg === item.key
+                const Icon = item.icon
                 return (
                   <Link
                     key={item.key}
@@ -78,7 +80,7 @@ export default function AdminLayout({ children }) {
                         : 'text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink'
                     }`}
                   >
-                    <span aria-hidden="true" className="text-base">{item.icon}</span>
+                    <Icon size={18} className="shrink-0" />
                     {item.label}
                   </Link>
                 )
@@ -87,19 +89,22 @@ export default function AdminLayout({ children }) {
 
             {/* Divider + standalone tools */}
             <div className="mt-4 border-t border-brand-line pt-4">
-              {NAV_STANDALONE.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt hover:text-brand-ink"
-                >
-                  <span aria-hidden="true" className="text-base">{item.icon}</span>
-                  {item.label}
-                  <span className="ml-auto text-[10px] text-brand-muted/60">↗</span>
-                </a>
-              ))}
+              {NAV_STANDALONE.map((item) => {
+                const Icon = item.icon
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt hover:text-brand-ink"
+                  >
+                    <Icon size={18} className="shrink-0" />
+                    {item.label}
+                    <ArrowUpRight size={13} className="ml-auto text-brand-muted/60" />
+                  </a>
+                )
+              })}
             </div>
           </aside>
         )}
@@ -126,17 +131,20 @@ export default function AdminLayout({ children }) {
                 )
               })}
               {/* Gate Scanner pill — opens in new tab */}
-              {NAV_STANDALONE.map((item) => (
-                <a
-                  key={item.href}
-                  href={item.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="shrink-0 rounded-full border border-brand-line bg-white px-3.5 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt"
-                >
-                  {item.icon} {item.label}
-                </a>
-              ))}
+              {NAV_STANDALONE.map((item) => {
+                const Icon = item.icon
+                return (
+                  <a
+                    key={item.href}
+                    href={item.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-line bg-white px-3.5 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt"
+                  >
+                    <Icon size={15} />{item.label}
+                  </a>
+                )
+              })}
             </nav>
           )}
           <div className="animate-rise">{children}</div>

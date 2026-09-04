@@ -8,6 +8,7 @@
 import { useState, useEffect, useRef } from 'react'
 import { Link } from 'react-router-dom'
 import QRCodeLib from 'qrcode'
+import { Alert, Inbox, Sun, Moon } from './icons.jsx'
 
 const RADIUS = 'rounded-xl'
 
@@ -108,8 +109,8 @@ export function Field({ label, hint, error, required, children, htmlFor }) {
       {children}
       {hint && !error && <p className="text-xs text-brand-muted">{hint}</p>}
       {error && (
-        <p className="flex items-center gap-1 text-xs font-medium text-brand-red" role="alert">
-          <span aria-hidden="true">⚠</span>{error}
+        <p className="flex items-center gap-1.5 text-xs font-medium text-brand-red" role="alert">
+          <Alert size={14} className="shrink-0" />{error}
         </p>
       )}
     </div>
@@ -189,11 +190,12 @@ export function Avatar({ name, size = 'md' }) {
 
 /* ── Empty state ────────────────────────────────────────────────────────────
    Always icon + title + description + action — never a bare "No data". */
-export function EmptyState({ icon = '📭', title, description, action }) {
+export function EmptyState({ icon, title, description, action }) {
+  const Glyph = icon || Inbox
   return (
     <Card className="flex flex-col items-center justify-center px-6 py-14 text-center">
-      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-3xl" aria-hidden="true">
-        {icon}
+      <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted" aria-hidden="true">
+        <Glyph size={26} />
       </div>
       <h3 className="mt-4 font-display text-lg font-semibold text-brand-ink">{title}</h3>
       {description && <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-brand-muted">{description}</p>}
@@ -248,7 +250,8 @@ export function QRCode({ value, size = 200, id }) {
         className="flex items-center gap-1.5 rounded-full border border-brand-line bg-white px-3 py-1 text-xs font-medium text-brand-muted shadow-e1 transition-colors hover:bg-brand-surfaceAlt hover:text-brand-ink focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
         aria-label={dark ? 'Switch to light mode QR' : 'Switch to dark mode QR'}
       >
-        {dark ? '☀️ Light mode' : '🌙 Dark mode'}
+        {dark ? <Sun size={14} /> : <Moon size={14} />}
+        {dark ? 'Light mode' : 'Dark mode'}
       </button>
     </div>
   )

@@ -4,12 +4,13 @@ import { Card, Button, Field, Input } from '../components/ui.jsx'
 import { getEvent, registerAttendee, eventTypeInfo } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
 import { formatDuration } from '../lib/time.js'
+import { Search, Lock, Check, Alert, MapPin, ArrowRight } from '../components/icons.jsx'
 
 export default function PublicRegister() {
   useStore()
   const { eventId } = useParams()
   const event = getEvent(eventId)
-  const [form, setForm] = useState({ full_name: '', email: '', organization: '' })
+  const [form, setForm] = useState({ full_name: '', email: '', organization: '', year_section: '' })
   const [consent, setConsent] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)
@@ -18,7 +19,7 @@ export default function PublicRegister() {
     return (
       <Shell>
         <Card className="p-8 text-center">
-          <div className="text-4xl">🔍</div>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted"><Search size={26} /></div>
           <h1 className="mt-3 font-display text-xl font-bold text-brand-ink">Event not found</h1>
           <p className="mt-1 text-sm text-brand-muted">This registration link is invalid or the event was removed.</p>
         </Card>
@@ -34,7 +35,7 @@ export default function PublicRegister() {
       <Shell>
         <EventHeader meta={meta} settings={s} />
         <Card className="mt-4 p-8 text-center">
-          <div className="text-4xl">🔒</div>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted"><Lock size={24} /></div>
           <h2 className="mt-3 font-display text-lg font-bold text-brand-ink">Registration is closed</h2>
           <p className="mt-1 text-sm text-brand-muted">The organizer has closed registration for this event.</p>
         </Card>
@@ -57,7 +58,7 @@ export default function PublicRegister() {
       <Shell>
         <EventHeader meta={meta} settings={s} />
         <Card className="mt-4 p-8 text-center animate-rise">
-          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand-greenSoft text-3xl text-brand-green">✓</div>
+          <div className="mx-auto grid h-16 w-16 place-items-center rounded-full bg-brand-greenSoft text-brand-green"><Check size={30} /></div>
           <h2 className="mt-4 font-display text-xl font-bold text-brand-ink">You&rsquo;re registered!</h2>
           <p className="mt-2 text-sm leading-relaxed text-brand-muted">
             Your registration is pending admin approval. Once approved, your QR ticket appears on your personal page below (and is emailed to you).
@@ -68,7 +69,7 @@ export default function PublicRegister() {
               {window.location.origin}/me/{done.claim_token}
             </Link>
           </div>
-          <Button className="mt-5 w-full" size="lg" to={`/me/${done.claim_token}`}>Go to my page →</Button>
+          <Button className="mt-5 w-full" size="lg" to={`/me/${done.claim_token}`}>Go to my page<ArrowRight size={16} /></Button>
         </Card>
       </Shell>
     )
@@ -98,7 +99,7 @@ export default function PublicRegister() {
           </label>
           {err && (
             <p className="flex items-center gap-1.5 rounded-lg bg-brand-redSoft px-3 py-2 text-sm font-medium text-brand-red" role="alert">
-              <span aria-hidden="true">⚠</span>{err}
+              <Alert size={15} className="shrink-0" />{err}
             </p>
           )}
           <Button type="submit" size="lg" className="w-full">Submit registration</Button>
@@ -128,7 +129,7 @@ function EventHeader({ meta, settings }) {
       <div className="bg-brand-navy p-5 text-white">
         <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink">{eventTypeInfo(meta.event_type).label}</span>
         <h1 className="mt-2.5 font-display text-xl font-bold tracking-tight">{meta.name}</h1>
-        {meta.venue && <p className="mt-1 text-sm text-white/70">📍 {meta.venue}</p>}
+        {meta.venue && <p className="mt-1 flex items-center gap-1.5 text-sm text-white/70"><MapPin size={14} className="shrink-0" />{meta.venue}</p>}
       </div>
       <div className="flex items-center justify-between gap-3 p-4">
         <span className="text-sm text-brand-muted">Certificate requirement</span>

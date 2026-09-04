@@ -5,6 +5,7 @@ import { Card, Button, Badge, Avatar, StatusBadge, EmptyState, QRCode, Field, In
 import { getEvent, listAttendees, approveAttendee, rejectAttendee, registerAttendee, getAttendee } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
 import { toast } from '../components/Toast.jsx'
+import { Search, Check, Download, Link2 } from '../components/icons.jsx'
 
 const TABS = [
   { key: 'pending', label: 'Pending' },
@@ -60,7 +61,7 @@ export default function AdminRegistrations() {
           ))}
         </div>
         <div className="relative w-full sm:w-64">
-          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted" aria-hidden="true">🔍</span>
+          <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-brand-muted"><Search size={16} /></span>
           <Input
             className="pl-9"
             type="search"
@@ -92,7 +93,7 @@ export default function AdminRegistrations() {
 
       {rows.length === 0 ? (
         <EmptyState
-          icon={q ? '🔍' : '✅'}
+          icon={q ? Search : Check}
           title={q ? 'No match' : `No ${tab} registrations`}
           description={q ? `No ${tab} attendee matches "${query}".` : tab === 'pending' ? 'New submissions from the public form appear here for review.' : undefined}
         />
@@ -231,8 +232,8 @@ function QRModal({ attendee, onClose }) {
           </p>
 
           <div className="mt-5 grid grid-cols-2 gap-2">
-            <Button variant="secondary" onClick={download}>⬇ Download QR</Button>
-            <Button variant="outline" onClick={copyLink}>{copied ? '✓ Copied' : '🔗 Copy link'}</Button>
+            <Button variant="secondary" onClick={download}><Download size={16} />Download QR</Button>
+            <Button variant="outline" onClick={copyLink}>{copied ? <><Check size={16} />Copied</> : <><Link2 size={16} />Copy link</>}</Button>
           </div>
 
           <div className="mt-3 rounded-xl bg-brand-surfaceAlt p-3 text-left">

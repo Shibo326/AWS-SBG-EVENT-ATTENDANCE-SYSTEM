@@ -6,6 +6,7 @@ import { getEvent, listAttendees, attendeeStats, eventStats, allScans, getAttend
 import { useStore, useNow } from '../lib/hooks.js'
 import { formatDuration, formatTime, formatDateTime } from '../lib/time.js'
 import { toast } from '../components/Toast.jsx'
+import { Search, X } from '../components/icons.jsx'
 
 export default function AdminDashboard() {
   useStore()
@@ -17,7 +18,7 @@ export default function AdminDashboard() {
   const event = getEvent(eventId)
 
   if (!event) {
-    return <AdminLayout><EmptyState icon="🔍" title="Event not found" description="This event may have been removed." action={<Button to="/admin">Back to events</Button>} /></AdminLayout>
+    return <AdminLayout><EmptyState icon={Search} title="Event not found" description="This event may have been removed." action={<Button to="/admin">Back to events</Button>} /></AdminLayout>
   }
 
   const s = eventStats(eventId, now)
@@ -249,7 +250,7 @@ function ScanLog({ eventId }) {
             <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-lg text-xs font-bold ${
               rejected ? 'bg-brand-redSoft text-brand-red' : sc.direction === 'in' ? 'bg-brand-greenSoft text-brand-green' : 'bg-brand-amberSoft text-brand-amberDark'
             }`}>
-              {rejected ? '✕' : sc.direction === 'in' ? 'IN' : 'OUT'}
+              {rejected ? <X size={16} /> : sc.direction === 'in' ? 'IN' : 'OUT'}
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium text-brand-ink">{a?.full_name || 'Unknown'}</p>

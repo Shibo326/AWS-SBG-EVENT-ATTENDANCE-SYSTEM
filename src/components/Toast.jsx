@@ -2,6 +2,7 @@
 // <ToastHost/> mounts once near the app root and renders them.
 
 import { useEffect, useState } from 'react'
+import { Check, X, Alert } from './icons.jsx'
 
 let push = null
 let counter = 0
@@ -36,9 +37,9 @@ export function ToastHost() {
           className={`pointer-events-auto flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-medium shadow-e3 animate-rise ${tones[t.tone] || tones.default}`}
           role="status"
         >
-          {t.tone === 'success' && <span aria-hidden="true">✓</span>}
-          {t.tone === 'error' && <span aria-hidden="true">✕</span>}
-          {t.tone === 'warn' && <span aria-hidden="true">⚠</span>}
+          {t.tone === 'success' && <Check size={16} className="shrink-0" />}
+          {t.tone === 'error' && <X size={16} className="shrink-0" />}
+          {t.tone === 'warn' && <Alert size={16} className="shrink-0" />}
           {t.message}
         </div>
       ))}

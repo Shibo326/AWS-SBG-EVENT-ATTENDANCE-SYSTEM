@@ -5,8 +5,11 @@ import { Button, Card, Badge, Field, Input, Select, EmptyState } from '../compon
 import { listEvents, createEvent, eventStats, eventTypeInfo, eventTypes } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
 import { formatDate } from '../lib/time.js'
+import { Plus, Ticket, ArrowRight } from '../components/icons.jsx'
 
 const statusTone = { active: 'green', draft: 'gray', ended: 'blue', archived: 'muted' }
+
+const NewEventLabel = () => <><Plus size={16} />New event</>
 
 export default function AdminHome() {
   useStore()
@@ -19,17 +22,17 @@ export default function AdminHome() {
       <PageHeader
         title="Events"
         subtitle="Every event the AWS SBG team manages. Open one to run it, or create a new one."
-        actions={<Button onClick={() => setCreating(true)}>+ New event</Button>}
+        actions={<Button onClick={() => setCreating(true)}><NewEventLabel /></Button>}
       />
 
       {creating && <CreateEventForm onClose={() => setCreating(false)} onCreated={(id) => navigate(`/admin/event/${id}/settings`)} />}
 
       {events.length === 0 ? (
         <EmptyState
-          icon="🎫"
+          icon={Ticket}
           title="No events yet"
           description="Create your first event to start registering attendees and tracking time."
-          action={<Button onClick={() => setCreating(true)}>+ New event</Button>}
+          action={<Button onClick={() => setCreating(true)}><NewEventLabel /></Button>}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -54,7 +57,7 @@ export default function AdminHome() {
                 </div>
                 <div className="mt-auto flex items-center justify-between pt-5">
                   <span className="text-xs text-brand-muted">Created {formatDate(ev.created_at)}</span>
-                  <Button size="sm" to={`/admin/event/${ev.id}`}>Open →</Button>
+                  <Button size="sm" to={`/admin/event/${ev.id}`}>Open<ArrowRight size={15} /></Button>
                 </div>
               </Card>
             )

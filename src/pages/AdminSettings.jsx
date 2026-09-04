@@ -5,6 +5,8 @@ import { Card, Button, Field, Input, Select, Badge, EmptyState } from '../compon
 import { getEvent, updateSettings, updateEventMeta, eventTypes } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
 import { totalCountableMinutes, formatDuration } from '../lib/time.js'
+import { toast } from '../components/Toast.jsx'
+import { Check, Alert } from '../components/icons.jsx'
 
 // datetime-local helpers (render in local time, which for the demo == Manila)
 const toLocalInput = (ms) => {
@@ -48,6 +50,7 @@ export default function AdminSettings() {
       registration_open: regOpen,
     })
     setSaved(true)
+    toast('Settings saved', 'success')
     setTimeout(() => setSaved(false), 2000)
   }
 
@@ -66,7 +69,7 @@ export default function AdminSettings() {
       <PageHeader
         title="Event settings"
         subtitle="Configure this event before it starts. Settings apply to this event only."
-        actions={<Button onClick={save}>{saved ? '✓ Saved' : 'Save changes'}</Button>}
+        actions={<Button onClick={save}>{saved ? <><Check size={16} />Saved</> : 'Save changes'}</Button>}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -117,7 +120,7 @@ export default function AdminSettings() {
               </div>
             </Field>
             <div className={`flex items-start gap-2 rounded-xl border p-3.5 text-sm ${conflict ? 'border-brand-red/30 bg-brand-redSoft text-brand-red' : 'border-brand-green/30 bg-brand-greenSoft text-brand-green'}`} role="status">
-              <span className="mt-0.5 shrink-0" aria-hidden="true">{conflict ? '⚠' : '✓'}</span>
+              <span className="mt-0.5 shrink-0">{conflict ? <Alert size={16} /> : <Check size={16} />}</span>
               <span className="leading-relaxed">
                 {conflict ? (
                   <>Minimum (<strong>{formatDuration(minMinutes)}</strong>) is higher than total countable hours (<strong>{formatDuration(countable)}</strong>). No one could qualify.</>

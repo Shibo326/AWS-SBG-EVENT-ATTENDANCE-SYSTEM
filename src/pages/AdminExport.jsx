@@ -6,6 +6,8 @@ import { getEvent, listAttendees, attendeeStats, certflowRows, analyticalRows } 
 import { useStore } from '../lib/hooks.js'
 import { formatDuration } from '../lib/time.js'
 import { toCSV, downloadCSV } from '../lib/csv.js'
+import { toast } from '../components/Toast.jsx'
+import { Alert, GradCap, Grid, ArrowRight, ArrowUpRight } from '../components/icons.jsx'
 
 // Deployed CertFlow app (the group's standalone bulk certificate generator + emailer).
 // The handoff is a CSV: export the eligible list here, then open CertFlow to upload it.
@@ -33,10 +35,12 @@ export default function AdminExport() {
   const exportCertflow = () => {
     const data = certflowRows(eventId)
     downloadCSV(`${slug}-certflow.csv`, toCSV(data, ['name', 'email']))
+    toast(`Exported ${data.length} eligible attendee${data.length !== 1 ? 's' : ''} for CertFlow`, 'success')
   }
   const exportAnalytical = () => {
     const data = analyticalRows(eventId)
     downloadCSV(`${slug}-attendance.csv`, toCSV(data, ['name', 'email', 'organization', 'total_minutes', 'sessions', 'eligible', 'review']))
+    toast('Analytical CSV downloaded', 'success')
   }
 
   return (
@@ -45,7 +49,7 @@ export default function AdminExport() {
 
       {flagged > 0 && (
         <Card className="mb-6 flex items-start gap-3 border-brand-amberDark/30 bg-brand-amberSoft p-4">
-          <span className="mt-0.5 shrink-0 text-brand-amberDark" aria-hidden="true">⚠</span>
+          <Alert size={18} className="mt-0.5 shrink-0 text-brand-amberDark" />
           <p className="text-sm leading-relaxed text-brand-amberWarn">
             <strong className="text-brand-amberDark">{flagged}</strong> attendee{flagged !== 1 ? 's' : ''} still inside or with a capped session. Review these before exporting — someone still &ldquo;inside&rdquo; hasn&rsquo;t scanned out yet.
           </p>
@@ -54,7 +58,7 @@ export default function AdminExport() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-2">
         <Card interactive className="flex items-center gap-4 p-5">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-amberSoft text-2xl">🎓</div>
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-amberSoft text-brand-amberDark"><GradCap size={24} /></div>
           <div className="min-w-0 flex-1">
             <h3 className="font-display font-semibold text-brand-ink">CertFlow-ready CSV</h3>
             <p className="text-xs text-brand-muted">{eligibleCount} eligible · name,email only · drops into CertFlow</p>
@@ -62,7 +66,7 @@ export default function AdminExport() {
           <Button onClick={exportCertflow} disabled={eligibleCount === 0}>Download</Button>
         </Card>
         <Card interactive className="flex items-center gap-4 p-5">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-surfaceAlt text-2xl">📊</div>
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-surfaceAlt text-brand-muted"><Grid size={24} /></div>
           <div className="min-w-0 flex-1">
             <h3 className="font-display font-semibold text-brand-ink">Analytical CSV</h3>
             <p className="text-xs text-brand-muted">All approved · times, sessions, flags</p>
@@ -75,12 +79,12 @@ export default function AdminExport() {
           CertFlow to upload it and send the certificates. Two clear steps. */}
       <Card className="mb-6 overflow-hidden">
         <div className="flex flex-wrap items-center gap-4 bg-brand-ink p-5 text-white">
-          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-amber text-2xl text-brand-ink">🎓</div>
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-amber text-brand-ink"><GradCap size={24} /></div>
           <div className="min-w-0 flex-1">
             <h3 className="font-display font-semibold">Send the certificates with CertFlow</h3>
-            <p className="mt-0.5 text-sm text-white/70">
+            <p className="mt-0.5 flex flex-wrap items-center gap-1.5 text-sm text-white/70">
               <span className="font-medium text-white">1.</span> Download the CertFlow-ready CSV above.
-              <span className="mx-1.5 text-white/40">→</span>
+              <ArrowRight size={14} className="text-white/40" />
               <span className="font-medium text-white">2.</span> Open CertFlow, upload it, and email everyone their certificate.
             </p>
           </div>
@@ -91,7 +95,7 @@ export default function AdminExport() {
             rel="noopener noreferrer"
             className="focus-visible:ring-offset-brand-ink"
           >
-            Open CertFlow ↗
+            Open CertFlow<ArrowUpRight size={16} />
           </Button>
         </div>
       </Card>

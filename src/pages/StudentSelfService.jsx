@@ -5,6 +5,7 @@ import { findByClaim, getEvent, attendeeStats, acceptedScansFor, requestReview, 
 import { useStore, useNow } from '../lib/hooks.js'
 import { formatDuration, formatDateTime, formatTime } from '../lib/time.js'
 import { toast } from '../components/Toast.jsx'
+import { Search, Clock, X, Check } from '../components/icons.jsx'
 
 export default function StudentSelfService() {
   useStore()
@@ -18,7 +19,7 @@ export default function StudentSelfService() {
     return (
       <Shell>
         <Card className="p-8 text-center">
-          <div className="text-4xl">🔍</div>
+          <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted"><Search size={26} /></div>
           <h1 className="mt-3 font-display text-xl font-bold text-brand-ink">Page not found</h1>
           <p className="mt-1 text-sm text-brand-muted">This link is invalid. Check the link from your confirmation.</p>
         </Card>
@@ -46,14 +47,14 @@ export default function StudentSelfService() {
       {/* Pending / rejected states */}
       {attendee.status === 'pending' && (
         <Card className="mt-4 p-6 text-center">
-          <div className="text-3xl">⏳</div>
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-amberSoft text-brand-amberDark"><Clock size={24} /></div>
           <h2 className="mt-2 font-display font-semibold text-brand-ink">Waiting for approval</h2>
           <p className="mt-1 text-sm text-brand-muted">Your QR ticket appears here once an admin approves your registration.</p>
         </Card>
       )}
       {attendee.status === 'rejected' && (
         <Card className="mt-4 p-6 text-center">
-          <div className="text-3xl">✕</div>
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-redSoft text-brand-red"><X size={24} /></div>
           <h2 className="mt-2 font-display font-semibold text-brand-ink">Registration not approved</h2>
           <p className="mt-1 text-sm text-brand-muted">Please contact the event organizer.</p>
         </Card>
@@ -85,7 +86,7 @@ export default function StudentSelfService() {
                 <p className="text-xs font-semibold uppercase tracking-wide text-brand-muted">Time inside</p>
                 <p className="mt-1 font-display text-3xl font-bold tabular text-brand-ink">{formatDuration(st.totalMinutes)}</p>
               </div>
-              {st.isEligible ? <Badge tone="green">✓ Eligible</Badge> : <span className="pb-1 text-sm text-brand-muted">of {formatDuration(st.requiredMinutes)}</span>}
+              {st.isEligible ? <Badge tone="green"><Check size={13} />Eligible</Badge> : <span className="pb-1 text-sm text-brand-muted">of {formatDuration(st.requiredMinutes)}</span>}
             </div>
             <div className="mt-3"><ProgressBar pct={st.progressPct} tone={st.isEligible ? 'green' : 'amber'} label="Progress toward certificate" /></div>
             {!st.isEligible && (
@@ -124,7 +125,7 @@ export default function StudentSelfService() {
           <div className="mt-4">
             {myReviewRequests(eventId, attendee.id).some((r) => r.status === 'open') ? (
               <Card className="p-4 text-center">
-                <p className="text-sm text-brand-teal">✓ Your review request was sent. An organizer will check your record.</p>
+                <p className="flex items-center justify-center gap-1.5 text-sm text-brand-teal"><Check size={15} />Your review request was sent. An organizer will check your record.</p>
               </Card>
             ) : reviewOpen ? (
               <Card className="p-4">
