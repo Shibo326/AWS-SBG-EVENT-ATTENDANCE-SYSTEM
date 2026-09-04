@@ -25,7 +25,7 @@ const token = () => rid('tok_') + rid()
 
 // ---- localStorage persistence ----------------------------------------------
 
-const STORAGE_KEY = 'sbg_attendance_db_v1'
+const STORAGE_KEY = 'sbg_attendance_db_v2'
 
 // saveDb is a `let` so it can be assigned after `db` is defined below,
 // but notify() can still call it via closure — JS hoists the binding.
@@ -96,11 +96,13 @@ function seedSeminar() {
     const id = rid('att_')
     const qr = token()
     const claim = token()
+    const SECTIONS = ['BSIT 1-A', 'BSIT 2-B', 'BSIT 3-A', 'BSCS 2-A', 'BSIT 4-C', 'BSCS 1-B', 'BSIT 3-B', 'BSCS 3-A']
     const a = {
       id,
       full_name,
       email,
       organization,
+      year_section: SECTIONS[i % SECTIONS.length],
       status,
       qr_token: status === 'approved' ? qr : null,
       qr_revoked: false,
@@ -362,7 +364,7 @@ export function updateEventMeta(eventId, patch) {
   notify()
 }
 
-export function registerAttendee(eventId, { full_name, email, organization }) {
+export function registerAttendee(eventId, { full_name, email, organization, year_section }) {
   const e = db.events[eventId]
   if (!e) return { error: 'Event not found' }
   const dup = Object.values(e.attendees).find(
@@ -371,7 +373,7 @@ export function registerAttendee(eventId, { full_name, email, organization }) {
   if (dup) return { error: 'This email is already registered for this event.' }
   const id = rid('att_')
   e.attendees[id] = {
-    id, full_name, email, organization: organization || '',
+    id, full_name, email, organization: organization || '', year_section: year_section || '',
     status: 'pending', qr_token: null, qr_revoked: false,
     claim_token: token(), consent_given: true, consent_at: Date.now(),
     created_at: Date.now(), approved_at: null,
@@ -478,6 +480,7 @@ export function analyticalRows(eventId, now = Date.now()) {
       const s = attendeeStats(eventId, a.id, now)
       return {
         name: a.full_name, email: a.email, organization: a.organization,
+        year_section: a.year_section || '',
         total_minutes: s.totalMinutes, sessions: s.entryCount,
         eligible: s.isEligible ? 'yes' : 'no',
         review: s.capped ? 'capped_session' : '',

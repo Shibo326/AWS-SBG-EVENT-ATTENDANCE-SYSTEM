@@ -39,7 +39,7 @@ export default function AdminExport() {
   }
   const exportAnalytical = () => {
     const data = analyticalRows(eventId)
-    downloadCSV(`${slug}-attendance.csv`, toCSV(data, ['name', 'email', 'organization', 'total_minutes', 'sessions', 'eligible', 'review']))
+    downloadCSV(`${slug}-attendance.csv`, toCSV(data, ['name', 'email', 'organization', 'year_section', 'total_minutes', 'sessions', 'eligible', 'review']))
     toast('Analytical CSV downloaded', 'success')
   }
 
@@ -122,7 +122,7 @@ export default function AdminExport() {
                 <Avatar name={a.full_name} size="sm" />
                 <div className="min-w-0 flex-1">
                   <p className="truncate font-medium text-brand-ink">{a.full_name}</p>
-                  <p className="truncate text-xs text-brand-muted">{a.email}</p>
+                  <p className="truncate text-xs text-brand-muted">{a.email}{a.year_section ? ` · ${a.year_section}` : ''}</p>
                 </div>
                 {st.capped && <Badge tone="amber">Capped</Badge>}
                 {st.isInside && <Badge tone="teal">Still inside</Badge>}

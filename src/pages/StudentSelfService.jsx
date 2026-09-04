@@ -40,6 +40,7 @@ export default function StudentSelfService() {
         <div className="bg-brand-navy p-5 text-white">
           <p className="text-sm text-white/70">{meta.name}</p>
           <h1 className="mt-1 font-display text-2xl font-bold tracking-tight">{attendee.full_name}</h1>
+          {attendee.year_section && <p className="mt-0.5 text-sm text-white/60">{attendee.year_section}</p>}
           <div className="mt-2.5"><StatusBadge status={attendee.status} /></div>
         </div>
       </Card>

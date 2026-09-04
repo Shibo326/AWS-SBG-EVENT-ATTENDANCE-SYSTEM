@@ -91,6 +91,9 @@ export default function PublicRegister() {
           <Field label="School / organization" htmlFor="reg-org">
             <Input id="reg-org" value={form.organization} onChange={(e) => setForm({ ...form, organization: e.target.value })} placeholder="STI Global City" />
           </Field>
+          <Field label="Year & section" htmlFor="reg-yearsec" hint="e.g. BSIT 3-A">
+            <Input id="reg-yearsec" value={form.year_section} onChange={(e) => setForm({ ...form, year_section: e.target.value })} placeholder="BSIT 3-A" />
+          </Field>
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-brand-line bg-brand-surfaceAlt p-3.5">
             <input type="checkbox" checked={consent} onChange={(e) => { setConsent(e.target.checked); setErr('') }} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-amber" />
             <span className="text-sm leading-relaxed text-brand-slate">

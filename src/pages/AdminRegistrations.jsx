@@ -108,7 +108,9 @@ export default function AdminRegistrations() {
                     <p className="truncate font-medium text-brand-ink">{a.full_name}</p>
                     <StatusBadge status={a.status} />
                   </div>
-                  <p className="truncate text-xs text-brand-muted">{a.email} · {a.organization || 'No org'}</p>
+                  <p className="truncate text-xs text-brand-muted">
+                    {a.email} · {a.organization || 'No org'}{a.year_section ? ` · ${a.year_section}` : ''}
+                  </p>
                 </div>
                 <div className="flex gap-2">
                   {a.status === 'pending' && (
@@ -139,12 +141,13 @@ function ManualAdd({ eventId, onClose, onIssued }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [org, setOrg] = useState('')
+  const [yearSection, setYearSection] = useState('')
   const [err, setErr] = useState('')
 
   const submit = (e) => {
     e.preventDefault()
     if (!name.trim() || !email.trim()) return setErr('Name and email are required.')
-    const res = registerAttendee(eventId, { full_name: name.trim(), email: email.trim(), organization: org.trim() })
+    const res = registerAttendee(eventId, { full_name: name.trim(), email: email.trim(), organization: org.trim(), year_section: yearSection.trim() })
     if (res.error) return setErr(res.error)
     approveAttendee(eventId, res.id) // walk-ins are auto-approved
     const issued = getAttendee(eventId, res.id)
@@ -157,10 +160,11 @@ function ManualAdd({ eventId, onClose, onIssued }) {
       <form onSubmit={submit} className="space-y-4">
         <h2 className="font-display text-lg font-semibold text-brand-ink">Add walk-in attendee</h2>
         <p className="text-sm text-brand-muted">Walk-ins are auto-approved and get a QR immediately. The QR pops up right after you add them — show it on screen or download it to hand over.</p>
-        <div className="grid gap-4 sm:grid-cols-3">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
           <Field label="Full name" error={err}><Input value={name} onChange={(e) => { setName(e.target.value); setErr('') }} /></Field>
           <Field label="Email"><Input type="email" value={email} onChange={(e) => { setEmail(e.target.value); setErr('') }} /></Field>
           <Field label="Organization"><Input value={org} onChange={(e) => setOrg(e.target.value)} /></Field>
+          <Field label="Year & section"><Input value={yearSection} onChange={(e) => setYearSection(e.target.value)} placeholder="BSIT 3-A" /></Field>
         </div>
         <div className="flex gap-2">
           <Button type="submit">Add & issue QR</Button>
@@ -222,6 +226,7 @@ function QRModal({ attendee, onClose }) {
         <div onClick={(e) => e.stopPropagation()}>
           <h3 className="font-display text-lg font-semibold text-brand-ink">{attendee.full_name}</h3>
           <p className="text-sm text-brand-muted">{attendee.email}</p>
+          {attendee.year_section && <p className="text-xs text-brand-muted">{attendee.year_section}</p>}
           <div className="mt-4 flex justify-center">
             <div id="qr-ticket">
               <QRCode value={attendee.qr_token} size={220} id="qr-ticket-svg" />

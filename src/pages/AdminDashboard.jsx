@@ -70,7 +70,7 @@ export default function AdminDashboard() {
                             <Badge tone="gray">Not arrived</Badge>
                           )}
                         </div>
-                        <p className="truncate text-xs text-brand-muted">{a.email}</p>
+                        <p className="truncate text-xs text-brand-muted">{a.email}{a.year_section ? ` · ${a.year_section}` : ''}</p>
                       </div>
                       <div className="hidden w-40 sm:block">
                         <div className="flex items-center justify-between text-xs tabular">
