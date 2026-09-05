@@ -1,19 +1,30 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Card, Button, Field, Input } from '../components/ui.jsx'
-import { getEvent, registerAttendee, eventTypeInfo } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { registerAttendee, eventTypeInfo } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { formatDuration } from '../lib/time.js'
 import { Search, Lock, Check, Alert, MapPin, ArrowRight } from '../components/icons.jsx'
 
 export default function PublicRegister() {
-  useStore()
   const { eventId } = useParams()
-  const event = getEvent(eventId)
+  const { event, loading } = useEvent(eventId)
   const [form, setForm] = useState({ full_name: '', email: '', organization: '', year_section: '' })
   const [consent, setConsent] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+
+  if (loading) {
+    return (
+      <Shell>
+        <Card className="p-8 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-brand-line border-t-brand-amber" />
+          <p className="mt-3 text-sm text-brand-muted">Loading event…</p>
+        </Card>
+      </Shell>
+    )
+  }
 
   if (!event) {
     return (
@@ -43,14 +54,22 @@ export default function PublicRegister() {
     )
   }
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!form.full_name.trim() || !form.email.trim()) return setErr('Name and email are required.')
     if (!/^\S+@\S+\.\S+$/.test(form.email)) return setErr('Enter a valid email address.')
     if (!consent) return setErr('Please agree to the privacy notice to continue.')
-    const res = registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
-    if (res.error) return setErr(res.error)
-    setDone(res)
+    setSubmitting(true)
+    setErr('')
+    try {
+      const res = await registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
+      if (res.error) { setErr(res.error); return }
+      setDone(res)
+    } catch (_) {
+      setErr('Could not submit right now. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (done) {
@@ -105,7 +124,7 @@ export default function PublicRegister() {
               <Alert size={15} className="shrink-0" />{err}
             </p>
           )}
-          <Button type="submit" size="lg" className="w-full">Submit registration</Button>
+          <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit registration'}</Button>
         </form>
       </Card>
     </Shell>

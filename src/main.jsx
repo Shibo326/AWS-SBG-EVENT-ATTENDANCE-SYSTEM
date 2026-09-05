@@ -2,6 +2,7 @@ import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App.jsx'
+import { AuthProvider } from './lib/auth.jsx'
 import './index.css'
 
 // One-time cleanup: this dev port (5173) previously hosted another PWA (a portfolio
@@ -37,7 +38,9 @@ purgeStaleServiceWorkers().then((reloading) => {
   ReactDOM.createRoot(document.getElementById('root')).render(
     <React.StrictMode>
       <BrowserRouter>
-        <App />
+        <AuthProvider>
+          <App />
+        </AuthProvider>
       </BrowserRouter>
     </React.StrictMode>,
   )

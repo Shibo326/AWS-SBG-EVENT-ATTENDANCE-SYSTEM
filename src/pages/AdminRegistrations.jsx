@@ -2,8 +2,10 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Card, Button, Badge, Avatar, StatusBadge, EmptyState, QRCode, Field, Input } from '../components/ui.jsx'
-import { getEvent, listAttendees, approveAttendee, rejectAttendee, registerAttendee, getAttendee } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { listAttendeesFrom, approveAttendee, rejectAttendee, registerAttendee } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
+import { useAuth } from '../lib/auth.jsx'
+import { sendQrTicket } from '../lib/email.js'
 import { toast } from '../components/Toast.jsx'
 import { Search, Check, Download, Link2 } from '../components/icons.jsx'
 
@@ -13,18 +15,45 @@ const TABS = [
   { key: 'rejected', label: 'Rejected' },
 ]
 
+// Approve one attendee, mint the QR (inside approveAttendee), then email the
+// ticket. Email is a convenience channel — a send failure must not block the
+// approval (self-service is the guaranteed fallback, §12.12). Returns the
+// minted qr_token so callers can pop the QR immediately.
+async function approveAndEmail(eventId, attendee, eventName, approvedBy) {
+  const { qr_token } = await approveAttendee(eventId, attendee.id, approvedBy)
+  // Fire-and-forget email; never throws.
+  sendQrTicket({
+    toEmail: attendee.email,
+    toName: attendee.full_name,
+    eventName,
+    qrToken: qr_token,
+    claimToken: attendee.claim_token,
+  })
+  return qr_token
+}
+
 export default function AdminRegistrations() {
-  useStore()
   const { eventId } = useParams()
+  const { event, loading } = useEvent(eventId)
+  const { user } = useAuth()
+  const uid = user?.uid
   const [tab, setTab] = useState('pending')
   const [adding, setAdding] = useState(false)
   const [qrFor, setQrFor] = useState(null)
   const [query, setQuery] = useState('')
-  const event = getEvent(eventId)
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="h-8 w-48 animate-pulse rounded bg-brand-surfaceAlt" />
+        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-brand-surfaceAlt/60" />
+      </AdminLayout>
+    )
+  }
   if (!event) return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
 
-  const all = listAttendees(eventId)
+  const eventName = event.meta?.name || ''
+  const all = listAttendeesFrom(event)
   const counts = {
     pending: all.filter((a) => a.status === 'pending').length,
     approved: all.filter((a) => a.status === 'approved').length,
@@ -43,7 +72,7 @@ export default function AdminRegistrations() {
         actions={<Button onClick={() => setAdding(true)}>+ Add attendee</Button>}
       />
 
-      {adding && <ManualAdd eventId={eventId} onClose={() => setAdding(false)} onIssued={(a) => setQrFor(a)} />}
+      {adding && <ManualAdd eventId={eventId} eventName={eventName} uid={uid} onClose={() => setAdding(false)} onIssued={(a) => setQrFor(a)} />}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
@@ -77,13 +106,18 @@ export default function AdminRegistrations() {
         <div className="mb-3 flex items-center gap-2">
           <Button
             size="sm" variant="success"
-            onClick={() => { const n = rows.length; rows.forEach((a) => approveAttendee(eventId, a.id)); toast(`Approved ${n} attendee${n !== 1 ? 's' : ''} — QR issued`, 'success') }}
+            onClick={async () => {
+              const n = rows.length
+              // Sequential to respect EmailJS free-tier throttling (§11).
+              for (const a of rows) { await approveAndEmail(eventId, a, eventName, uid) }
+              toast(`Approved ${n} attendee${n !== 1 ? 's' : ''} — QR issued`, 'success')
+            }}
           >
             Approve all {rows.length}
           </Button>
           <Button
             size="sm" variant="outline"
-            onClick={() => { const n = rows.length; rows.forEach((a) => rejectAttendee(eventId, a.id)); toast(`Rejected ${n} registration${n !== 1 ? 's' : ''}`, 'warn') }}
+            onClick={async () => { const n = rows.length; for (const a of rows) { await rejectAttendee(eventId, a.id) } toast(`Rejected ${n} registration${n !== 1 ? 's' : ''}`, 'warn') }}
           >
             Reject all
           </Button>
@@ -115,15 +149,15 @@ export default function AdminRegistrations() {
                 <div className="flex gap-2">
                   {a.status === 'pending' && (
                     <>
-                      <Button size="sm" variant="success" onClick={() => { approveAttendee(eventId, a.id); toast(`Approved ${a.full_name} — QR issued`, 'success') }}>Approve</Button>
-                      <Button size="sm" variant="outline" onClick={() => { rejectAttendee(eventId, a.id); toast(`Rejected ${a.full_name}`, 'warn') }}>Reject</Button>
+                      <Button size="sm" variant="success" onClick={async () => { const qr = await approveAndEmail(eventId, a, eventName, uid); toast(`Approved ${a.full_name} — QR issued`, 'success'); setQrFor({ ...a, qr_token: qr, status: 'approved' }) }}>Approve</Button>
+                      <Button size="sm" variant="outline" onClick={async () => { await rejectAttendee(eventId, a.id); toast(`Rejected ${a.full_name}`, 'warn') }}>Reject</Button>
                     </>
                   )}
                   {a.status === 'approved' && (
                     <Button size="sm" variant="outline" onClick={() => setQrFor(a)}>View QR</Button>
                   )}
                   {a.status === 'rejected' && (
-                    <Button size="sm" variant="ghost" onClick={() => { approveAttendee(eventId, a.id); toast(`Restored ${a.full_name}`, 'success') }}>Restore</Button>
+                    <Button size="sm" variant="ghost" onClick={async () => { await approveAndEmail(eventId, a, eventName, uid); toast(`Restored ${a.full_name}`, 'success') }}>Restore</Button>
                   )}
                 </div>
               </li>
@@ -137,22 +171,31 @@ export default function AdminRegistrations() {
   )
 }
 
-function ManualAdd({ eventId, onClose, onIssued }) {
+function ManualAdd({ eventId, eventName, uid, onClose, onIssued }) {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
   const [org, setOrg] = useState('')
   const [yearSection, setYearSection] = useState('')
   const [err, setErr] = useState('')
+  const [saving, setSaving] = useState(false)
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!name.trim() || !email.trim()) return setErr('Name and email are required.')
-    const res = registerAttendee(eventId, { full_name: name.trim(), email: email.trim(), organization: org.trim(), year_section: yearSection.trim() })
-    if (res.error) return setErr(res.error)
-    approveAttendee(eventId, res.id) // walk-ins are auto-approved
-    const issued = getAttendee(eventId, res.id)
-    onClose()
-    if (issued) onIssued(issued) // pop the QR straight away for walk-ins
+    setSaving(true)
+    setErr('')
+    try {
+      const res = await registerAttendee(eventId, { full_name: name.trim(), email: email.trim(), organization: org.trim(), year_section: yearSection.trim() })
+      if (res.error) { setErr(res.error); setSaving(false); return }
+      // Walk-ins are auto-approved and get a QR immediately.
+      const attendee = { id: res.id, full_name: name.trim(), email: email.trim(), organization: org.trim(), year_section: yearSection.trim(), claim_token: res.claim_token, status: 'approved' }
+      const qr_token = await approveAndEmail(eventId, attendee, eventName, uid)
+      onClose()
+      onIssued({ ...attendee, qr_token }) // pop the QR straight away for walk-ins
+    } catch (_) {
+      setErr('Could not add the attendee. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -167,7 +210,7 @@ function ManualAdd({ eventId, onClose, onIssued }) {
           <Field label="Year & section"><Input value={yearSection} onChange={(e) => setYearSection(e.target.value)} placeholder="BSIT 3-A" /></Field>
         </div>
         <div className="flex gap-2">
-          <Button type="submit">Add & issue QR</Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Adding…' : 'Add & issue QR'}</Button>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </form>
@@ -181,33 +224,24 @@ function QRModal({ attendee, onClose }) {
   const fileBase = attendee.full_name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
 
   const download = () => {
-    const svg = document.getElementById('qr-ticket-svg')
-    if (!svg) return
-    const xml = new XMLSerializer().serializeToString(svg)
-    const svgBlob = new Blob([xml], { type: 'image/svg+xml;charset=utf-8' })
-    const url = URL.createObjectURL(svgBlob)
-    const img = new Image()
-    img.onload = () => {
-      const scale = 3
-      const canvas = document.createElement('canvas')
-      canvas.width = img.width * scale
-      canvas.height = img.height * scale
-      const ctx = canvas.getContext('2d')
-      ctx.fillStyle = '#ffffff'
-      ctx.fillRect(0, 0, canvas.width, canvas.height)
-      ctx.drawImage(img, 0, 0, canvas.width, canvas.height)
-      URL.revokeObjectURL(url)
-      canvas.toBlob((blob) => {
-        const a = document.createElement('a')
-        a.href = URL.createObjectURL(blob)
-        a.download = `qr-${fileBase}.png`
-        document.body.appendChild(a)
-        a.click()
-        document.body.removeChild(a)
-        URL.revokeObjectURL(a.href)
-      }, 'image/png')
+    // QRCode renders to a <canvas> (id "qr-ticket-svg"), so we export the PNG
+    // straight from the canvas. (The old code serialized it as an SVG, which a
+    // canvas is not — that produced a broken/empty file.)
+    const canvas = document.getElementById('qr-ticket-svg')
+    if (!canvas || typeof canvas.toBlob !== 'function') {
+      toast('Could not export the QR. Try the self-service link instead.', 'error')
+      return
     }
-    img.src = url
+    canvas.toBlob((blob) => {
+      if (!blob) return
+      const a = document.createElement('a')
+      a.href = URL.createObjectURL(blob)
+      a.download = `qr-${fileBase}.png`
+      document.body.appendChild(a)
+      a.click()
+      document.body.removeChild(a)
+      URL.revokeObjectURL(a.href)
+    }, 'image/png')
   }
 
   const copyLink = async () => {

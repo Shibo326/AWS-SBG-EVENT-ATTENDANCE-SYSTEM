@@ -2,34 +2,62 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Stat, Card, Badge, Avatar, ProgressBar, Input, Field, Select, EmptyState, Button } from '../components/ui.jsx'
-import { getEvent, listAttendees, attendeeStats, eventStats, allScans, getAttendee, attendeeNeedsReview, addCorrection, listCorrections, myReviewRequests, resolveReview } from '../lib/store.js'
-import { useStore, useNow } from '../lib/hooks.js'
+import {
+  listAttendeesFrom, attendeeStatsFrom, eventStatsFrom, allScansFrom, getAttendeeFrom,
+  attendeeNeedsReviewFrom, addCorrection, correctionsForFrom, reviewRequestsForFrom, resolveReview,
+  concurrentOverlapEmails, hasConcurrentOverlap,
+} from '../lib/db.js'
+import { useEvent, useEvents, useNow } from '../lib/dbHooks.js'
+import { useAuth } from '../lib/auth.jsx'
 import { formatDuration, formatTime, formatDateTime } from '../lib/time.js'
 import { toast } from '../components/Toast.jsx'
 import { Search, X } from '../components/icons.jsx'
 
 export default function AdminDashboard() {
-  useStore()
   const now = useNow(1000)
   const { eventId } = useParams()
+  const { event, loading } = useEvent(eventId)
+  // All events (for cross-event concurrent-overlap detection, R18). Read-only.
+  const { events: allEvents } = useEvents()
   const [query, setQuery] = useState('')
   const [reviewOnly, setReviewOnly] = useState(false)
   const [fixFor, setFixFor] = useState(null)
-  const event = getEvent(eventId)
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="h-8 w-48 animate-pulse rounded bg-brand-surfaceAlt" />
+        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-6">{[...Array(6)].map((_, i) => <div key={i} className="h-20 animate-pulse rounded-xl bg-brand-surfaceAlt/60" />)}</div>
+        <div className="mt-6 h-96 animate-pulse rounded-2xl bg-brand-surfaceAlt/60" />
+      </AdminLayout>
+    )
+  }
   if (!event) {
     return <AdminLayout><EmptyState icon={Search} title="Event not found" description="This event may have been removed." action={<Button to="/admin">Back to events</Button>} /></AdminLayout>
   }
 
-  const s = eventStats(eventId, now)
-  const attendees = listAttendees(eventId)
+  const s = eventStatsFrom(event, now)
+
+  // Cross-event concurrent-overlap set: emails inside 2+ active events at once.
+  const overlapEmails = concurrentOverlapEmails(allEvents, now)
+  // An attendee needs review if their own record is anomalous OR their email
+  // shows a physically-impossible concurrent overlap across events (R18).
+  const needsReview = (a) =>
+    attendeeNeedsReviewFrom(event, a.id, now) || hasConcurrentOverlap(overlapEmails, a.email)
+
+  const attendees = listAttendeesFrom(event)
     .filter((a) => a.status === 'approved')
     .filter((a) => a.full_name.toLowerCase().includes(query.toLowerCase()) || a.email.toLowerCase().includes(query.toLowerCase()))
-    .filter((a) => !reviewOnly || attendeeNeedsReview(eventId, a.id, now))
+    .filter((a) => !reviewOnly || needsReview(a))
+
+  // Total needs-review count folds in concurrent overlaps that eventStatsFrom
+  // (single-event) can't see.
+  const approvedList = listAttendeesFrom(event).filter((a) => a.status === 'approved')
+  const needsReviewCount = approvedList.filter((a) => needsReview(a)).length
 
   return (
     <AdminLayout>
-      <PageHeader title="Live dashboard" subtitle={`${event.meta.venue} · updates in real time`} />
+      <PageHeader title="Live dashboard" subtitle={`${event.meta?.venue || ''} · updates in real time`} />
 
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-6">
         <Stat label="Currently inside" value={s.inside} tone="teal" live />
@@ -38,7 +66,7 @@ export default function AdminDashboard() {
         <Stat label="Certificate eligible" value={s.eligible} tone="amber" />
         <Stat label="Pending approval" value={s.pending} tone="muted" />
         <button onClick={() => setReviewOnly((v) => !v)} className="text-left focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber focus-visible:ring-offset-2 focus-visible:ring-offset-brand-surface rounded-xl">
-          <Stat label={reviewOnly ? 'Needs review ·filtered' : 'Needs review'} value={s.needsReview} tone={s.needsReview > 0 ? 'red' : 'muted'} />
+          <Stat label={reviewOnly ? 'Needs review ·filtered' : 'Needs review'} value={needsReviewCount} tone={needsReviewCount > 0 ? 'red' : 'muted'} />
         </button>
       </div>
 
@@ -55,7 +83,7 @@ export default function AdminDashboard() {
             ) : (
               <ul className="divide-y divide-brand-line">
                 {attendees.map((a) => {
-                  const st = attendeeStats(eventId, a.id, now)
+                  const st = attendeeStatsFrom(event, a.id, now)
                   return (
                     <li key={a.id} className="flex items-center gap-3 p-4">
                       <Avatar name={a.full_name} />
@@ -79,8 +107,10 @@ export default function AdminDashboard() {
                         </div>
                         <div className="mt-1.5"><ProgressBar pct={st.progressPct} tone={st.isEligible ? 'green' : 'amber'} label={`${a.full_name} progress`} /></div>
                       </div>
-                      <div className="flex w-32 items-center justify-end gap-2">
-                        {attendeeNeedsReview(eventId, a.id, now) && <Badge tone="red">Review</Badge>}
+                      <div className="flex w-36 items-center justify-end gap-2">
+                        {hasConcurrentOverlap(overlapEmails, a.email)
+                          ? <Badge tone="red" title="Open session in 2+ events at once — possible shared QR / proxy">Overlap</Badge>
+                          : attendeeNeedsReviewFrom(event, a.id, now) && <Badge tone="red">Review</Badge>}
                         {st.isEligible ? <Badge tone="green">Eligible</Badge> : <span className="tabular text-xs text-brand-muted">{formatDuration(st.remainingMinutes)}</span>}
                         <Button size="sm" variant="ghost" onClick={() => setFixFor(a)} aria-label={`Fix ${a.full_name}`}>Fix</Button>
                       </div>
@@ -99,12 +129,12 @@ export default function AdminDashboard() {
               <span className="h-1.5 w-1.5 rounded-full bg-brand-teal animate-pulse-ring" aria-hidden="true" />
               <h2 className="font-display font-semibold text-brand-ink">Live scan log</h2>
             </div>
-            <ScanLog eventId={eventId} />
+            <ScanLog event={event} />
           </Card>
         </div>
       </div>
 
-      {fixFor && <CorrectionModal eventId={eventId} attendee={fixFor} onClose={() => setFixFor(null)} />}
+      {fixFor && <CorrectionModal eventId={eventId} event={event} attendee={fixFor} onClose={() => setFixFor(null)} />}
     </AdminLayout>
   )
 }
@@ -112,8 +142,9 @@ export default function AdminDashboard() {
 // Corrections tool (Module 5). Append-only fixes with a required reason:
 // insert a missing scan, void a wrong scan, or adjust minutes. Also shows the
 // attendee's open review requests so an admin can act on a dispute and resolve it.
-function CorrectionModal({ eventId, attendee, onClose }) {
+function CorrectionModal({ eventId, event, attendee, onClose }) {
   const now = useNow(1000)
+  const { user } = useAuth()
   const [type, setType] = useState('insert_missing_scan')
   const [direction, setDirection] = useState('out')
   const [when, setWhen] = useState(() => {
@@ -126,24 +157,31 @@ function CorrectionModal({ eventId, attendee, onClose }) {
   const [reason, setReason] = useState('')
   const [err, setErr] = useState('')
 
-  const scans = allScans(eventId).filter((sc) => sc.attendee_id === attendee.id && sc.outcome === 'accepted')
-  const history = listCorrections(eventId, attendee.id)
-  const reviews = myReviewRequests(eventId, attendee.id).filter((r) => r.status === 'open')
-  const st = attendeeStats(eventId, attendee.id, now)
+  const [saving, setSaving] = useState(false)
+  const scans = allScansFrom(event).filter((sc) => sc.attendee_id === attendee.id && sc.outcome === 'accepted')
+  const history = correctionsForFrom(event, attendee.id)
+  const reviews = reviewRequestsForFrom(event, attendee.id).filter((r) => r.status === 'open')
+  const st = attendeeStatsFrom(event, attendee.id, now)
 
-  const apply = () => {
+  const apply = async () => {
     if (!reason.trim()) return setErr('A reason is required.')
     let payload = null, target = null
     if (type === 'insert_missing_scan') payload = { direction, timestamp: new Date(when).getTime() }
     else if (type === 'void_scan') { if (!voidId) return setErr('Pick a scan to void.'); target = voidId }
     else if (type === 'adjust_minutes') { const d = Number(delta); if (!d) return setErr('Enter a non-zero minute adjustment.'); payload = { delta_minutes: d } }
 
-    const res = addCorrection(eventId, attendee.id, { type, payload, target_scan_id: target, reason })
-    if (res.error) return setErr(res.error)
-    // If this resolves an open review, close it too.
-    reviews.forEach((r) => resolveReview(eventId, r.id))
-    toast(`Correction saved for ${attendee.full_name}`, 'success')
-    onClose()
+    setSaving(true)
+    try {
+      const res = await addCorrection(eventId, attendee.id, { type, payload, target_scan_id: target, reason, corrected_by: user?.uid })
+      if (res.error) { setErr(res.error); setSaving(false); return }
+      // If this resolves an open review, close it too.
+      for (const r of reviews) { await resolveReview(eventId, r.id) }
+      toast(`Correction saved for ${attendee.full_name}`, 'success')
+      onClose()
+    } catch (_) {
+      setErr('Could not save the correction. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -213,7 +251,7 @@ function CorrectionModal({ eventId, attendee, onClose }) {
             {err && reason.trim() && voidId !== '' && <p className="text-sm text-brand-red">{err}</p>}
 
             <div className="flex gap-2">
-              <Button onClick={apply}>Save correction</Button>
+              <Button onClick={apply} disabled={saving}>{saving ? 'Saving…' : 'Save correction'}</Button>
               <Button variant="ghost" onClick={onClose}>Cancel</Button>
             </div>
           </div>
@@ -237,13 +275,13 @@ function CorrectionModal({ eventId, attendee, onClose }) {
   )
 }
 
-function ScanLog({ eventId }) {
-  const scans = allScans(eventId).slice(0, 25)
+function ScanLog({ event }) {
+  const scans = allScansFrom(event).slice(0, 25)
   if (scans.length === 0) return <div className="p-8 text-center text-sm text-brand-muted">No scans yet.</div>
   return (
     <ul className="max-h-[520px] divide-y divide-brand-line overflow-y-auto">
       {scans.map((sc) => {
-        const a = getAttendee(eventId, sc.attendee_id)
+        const a = getAttendeeFrom(event, sc.attendee_id)
         const rejected = sc.outcome !== 'accepted'
         return (
           <li key={sc.id} className="flex items-center gap-3 p-3">

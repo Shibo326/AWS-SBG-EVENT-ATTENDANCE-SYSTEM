@@ -1,0 +1,120 @@
+{
+  "rules": {
+    ".read": false,
+    ".write": false,
+
+    "staff": {
+      ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+      ".write": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+      "$uid": {
+        ".read": "auth != null && (auth.uid === $uid || root.child('staff').child(auth.uid).child('role').val() === 'admin')"
+      }
+    },
+
+    "qr_index": {
+      ".read": "auth != null && root.child('staff').child(auth.uid).child('active').val() === true && (root.child('staff').child(auth.uid).child('role').val() === 'admin' || root.child('staff').child(auth.uid).child('role').val() === 'gate_staff')",
+      "$qr_token": {
+        ".write": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+        ".validate": "newData.hasChildren(['event_id', 'attendee_id']) && newData.child('event_id').isString() && newData.child('attendee_id').isString()"
+      }
+    },
+
+    "events": {
+      ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+      "$eventId": {
+        ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+
+        "meta": {
+          ".read": true,
+          ".write": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'"
+        },
+
+        "settings": {
+          ".read": true,
+          ".write": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'"
+        },
+
+        "attendees": {
+          ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+          ".write": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+          ".indexOn": ["email", "status"],
+
+          "$attendeeId": {
+            ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+
+            ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && auth == null)",
+
+            ".validate": "newData.hasChildren(['full_name', 'email', 'consent_given', 'created_at'])",
+
+            "full_name":    { ".validate": "newData.isString() && newData.val().length > 0 && newData.val().length <= 120" },
+            "email":        { ".validate": "newData.isString() && newData.val().matches(/^[^@\\s]+@[^@\\s]+\\.[^@\\s]+$/)" },
+            "organization": { ".validate": "newData.isString() && newData.val().length <= 200" },
+            "year_section": { ".validate": "newData.isString() && newData.val().length <= 60" },
+            "consent_given":{ ".validate": "newData.isBoolean() && newData.val() === true" },
+            "consent_at":   { ".validate": "newData.isNumber()" },
+            "created_at":   { ".validate": "newData.isNumber()" },
+
+            "status": {
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".validate": "newData.val() === 'pending' || newData.val() === 'approved' || newData.val() === 'rejected'"
+            },
+            "qr_token": {
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".validate": "newData.isString()"
+            },
+            "qr_revoked": {
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".validate": "newData.isBoolean()"
+            },
+            "claim_token": {
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".validate": "newData.isString()"
+            },
+            "approved_at":  { ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'" },
+            "approved_by":  { ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'" },
+
+            "$other": {
+              ".validate": "root.child('staff').child(auth.uid).child('role').val() === 'admin'"
+            }
+          }
+        },
+
+        "scan_events": {
+          ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+          ".indexOn": ["attendee_id", "scanned_at"],
+
+          "$scanId": {
+            ".write": "auth != null && !data.exists() && newData.exists() && root.child('staff').child(auth.uid).child('active').val() === true && (root.child('staff').child(auth.uid).child('role').val() === 'admin' || root.child('staff').child(auth.uid).child('role').val() === 'gate_staff')",
+
+            ".validate": "newData.hasChildren(['direction', 'outcome', 'method', 'scanned_at', 'gate_id', 'scanned_by'])",
+
+            "direction":  { ".validate": "newData.val() === 'in' || newData.val() === 'out'" },
+            "outcome":    { ".validate": "newData.val() === 'accepted' || newData.val() === 'rejected_invalid' || newData.val() === 'rejected_expired' || newData.val() === 'rejected_revoked' || newData.val() === 'rejected_cooldown' || newData.val() === 'rejected_not_approved'" },
+            "method":     { ".validate": "newData.val() === 'qr' || newData.val() === 'manual_lookup'" },
+            "scanned_at": { ".validate": "newData.val() === now" },
+            "gate_id":    { ".validate": "newData.isString()" },
+            "scanned_by": { ".validate": "newData.val() === auth.uid" },
+            "attendee_id":{ ".validate": "newData.isString() || newData.val() === null" },
+            "$other":     { ".validate": false }
+          }
+        },
+
+        "corrections": {
+          ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+
+          "$correctionId": {
+            ".write": "auth != null && !data.exists() && newData.exists() && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+
+            ".validate": "newData.hasChildren(['attendee_id', 'type', 'reason', 'corrected_by', 'corrected_at'])",
+
+            "type":         { ".validate": "newData.val() === 'insert_missing_scan' || newData.val() === 'void_scan' || newData.val() === 'adjust_minutes'" },
+            "reason":       { ".validate": "newData.isString() && newData.val().length > 0" },
+            "corrected_by": { ".validate": "newData.val() === auth.uid" },
+            "corrected_at": { ".validate": "newData.val() === now" },
+            "attendee_id":  { ".validate": "newData.isString()" }
+          }
+        }
+      }
+    }
+  }
+}

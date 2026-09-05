@@ -2,8 +2,8 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Card, Button, Field, Input, Select, Badge, EmptyState } from '../components/ui.jsx'
-import { getEvent, updateSettings, updateEventMeta, eventTypes } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { updateSettings, updateEventMeta, eventTypes } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { totalCountableMinutes, formatDuration } from '../lib/time.js'
 import { toast } from '../components/Toast.jsx'
 import { Check, Alert } from '../components/icons.jsx'
@@ -16,13 +16,36 @@ const toLocalInput = (ms) => {
 }
 const fromLocalInput = (v) => new Date(v).getTime()
 
-export default function AdminSettings() {
-  useStore()
-  const { eventId } = useParams()
-  const event = getEvent(eventId)
-  const [saved, setSaved] = useState(false)
+// active_windows is stored as an object map {id:{...}} in RTDB (arrays avoided).
+// Convert to an array for the form, and back to a map on save.
+const windowsToArray = (aw) =>
+  Array.isArray(aw) ? aw : aw ? Object.entries(aw).map(([id, w]) => ({ id, ...w })) : []
+const windowsToMap = (arr) =>
+  Object.fromEntries(arr.map((w) => [w.id, { starts_at: w.starts_at, ends_at: w.ends_at, label: w.label }]))
 
-  if (!event) return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
+// Loader wrapper — resolves the event before the form mounts, so the form's
+// useState hooks seed from real data instead of undefined (the async break).
+export default function AdminSettings() {
+  const { eventId } = useParams()
+  const { event, loading } = useEvent(eventId)
+
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="h-8 w-40 animate-pulse rounded bg-brand-surfaceAlt" />
+        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-brand-surfaceAlt/60" />
+      </AdminLayout>
+    )
+  }
+  if (!event) {
+    return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
+  }
+  return <SettingsForm eventId={eventId} event={event} />
+}
+
+function SettingsForm({ eventId, event }) {
+  const [saved, setSaved] = useState(false)
+  const [saving, setSaving] = useState(false)
 
   const meta = event.meta
   const s = event.settings
@@ -33,25 +56,32 @@ export default function AdminSettings() {
   const [validUntil, setValidUntil] = useState(toLocalInput(s.qr_valid_until))
   const [minHours, setMinHours] = useState(Math.floor(s.min_minutes_required / 60))
   const [minMins, setMinMins] = useState(s.min_minutes_required % 60)
-  const [windows, setWindows] = useState(s.active_windows)
+  const [windows, setWindows] = useState(windowsToArray(s.active_windows))
   const [regOpen, setRegOpen] = useState(s.registration_open)
 
   const minMinutes = (Number(minHours) || 0) * 60 + (Number(minMins) || 0)
   const countable = totalCountableMinutes(windows)
   const conflict = minMinutes > countable
 
-  const save = () => {
-    updateEventMeta(eventId, { name, event_type: type, venue })
-    updateSettings(eventId, {
-      qr_valid_from: fromLocalInput(validFrom),
-      qr_valid_until: fromLocalInput(validUntil),
-      min_minutes_required: Number(minMinutes),
-      active_windows: windows,
-      registration_open: regOpen,
-    })
-    setSaved(true)
-    toast('Settings saved', 'success')
-    setTimeout(() => setSaved(false), 2000)
+  const save = async () => {
+    setSaving(true)
+    try {
+      await updateEventMeta(eventId, { name, event_type: type, venue })
+      await updateSettings(eventId, {
+        qr_valid_from: fromLocalInput(validFrom),
+        qr_valid_until: fromLocalInput(validUntil),
+        min_minutes_required: Number(minMinutes),
+        active_windows: windowsToMap(windows),
+        registration_open: regOpen,
+      })
+      setSaved(true)
+      toast('Settings saved', 'success')
+      setTimeout(() => setSaved(false), 2000)
+    } catch (_) {
+      toast('Could not save settings', 'error')
+    } finally {
+      setSaving(false)
+    }
   }
 
   const updateWindow = (id, key, val) => {
@@ -69,7 +99,7 @@ export default function AdminSettings() {
       <PageHeader
         title="Event settings"
         subtitle="Configure this event before it starts. Settings apply to this event only."
-        actions={<Button onClick={save}>{saved ? <><Check size={16} />Saved</> : 'Save changes'}</Button>}
+        actions={<Button onClick={save} disabled={saving}>{saving ? 'Saving…' : saved ? <><Check size={16} />Saved</> : 'Save changes'}</Button>}
       />
 
       <div className="grid gap-6 lg:grid-cols-2">

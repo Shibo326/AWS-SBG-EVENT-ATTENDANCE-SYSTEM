@@ -1,19 +1,18 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
-import jsQRModule from 'jsqr'
-// jsqr ships CJS — the default export may be nested under .default in some bundlers
-const jsQR = typeof jsQRModule === 'function' ? jsQRModule : jsQRModule?.default
-import { listEvents, anyApprovedToken, processScan, listAttendees } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { Html5Qrcode } from 'html5-qrcode'
+import { processScan, anyApprovedTokenFrom, listAttendeesFrom } from '../lib/db.js'
+import { useEvents } from '../lib/dbHooks.js'
+import { useAuth } from '../lib/auth.jsx'
 import { formatDuration, formatTime } from '../lib/time.js'
 import { ArrowDown, ArrowUp, X, Check, Camera, CameraOff, Dice, Search, ArrowRight } from '../components/icons.jsx'
 
-// Module 4 gate scanner — jsQR + raw getUserMedia for full stream control.
-// Key improvements over html5-qrcode:
-//   • continuousAutoFocus applied directly on the MediaStreamTrack
-//   • High resolution (1280×720) so the QR modules are large enough to decode
-//   • requestAnimationFrame scan loop — no fps cap, no dropped frames
-//   • focusTap: clicking the viewport triggers a one-shot pointOfInterest refocus
+// Module 4 gate scanner — camera decode via html5-qrcode (PROJECT_PLAN §5.1).
+// The library owns the camera stream + decode loop and renders into a div; we
+// keep the whole scan flow around it (5s cooldown, IN/OUT via processScan,
+// full-screen colour flash, manual-name-lookup fallback, per-event selection).
+
+const SCANNER_ELEMENT_ID = 'gate-qr-reader'
 
 const FEEDBACK = {
   in:       { bg: 'bg-brand-green',     label: 'CHECKED IN',  Icon: ArrowDown },
@@ -22,11 +21,15 @@ const FEEDBACK = {
 }
 
 export default function GateScanner() {
-  useStore()
   const [searchParams, setSearchParams] = useSearchParams()
+  const { events: allEvents } = useEvents()
+  const { user } = useAuth()
 
-  // Active events only — the only ones a gate scanner should operate on
-  const events = listEvents().filter((e) => e.status === 'active')
+  // Active events only — the only ones a gate scanner should operate on.
+  // events are full snapshots {id, meta, settings, attendees, ...}.
+  const events = allEvents
+    .filter((e) => e.meta?.status === 'active')
+    .map((e) => ({ id: e.id, name: e.meta?.name || e.id, snapshot: e }))
 
   // Prefer ?event=<id> from the URL so bookmarked scanner links auto-select
   // the right event without the volunteer having to pick from the dropdown.
@@ -35,6 +38,15 @@ export default function GateScanner() {
     ? urlEventId
     : events[0]?.id || ''
   const [gateEvent, setGateEvent] = useState(defaultEventId)
+
+  // Once events load, adopt the default selection if nothing is chosen yet.
+  useEffect(() => {
+    if (!gateEvent && defaultEventId) setGateEvent(defaultEventId)
+  }, [defaultEventId, gateEvent])
+
+  // The live snapshot of the currently selected gate event (for simulate +
+  // manual lookup, which need the attendee roster).
+  const gateSnapshot = events.find((e) => e.id === gateEvent)?.snapshot || null
 
   // Keep URL in sync when the dropdown changes
   const handleEventChange = (e) => {
@@ -49,20 +61,15 @@ export default function GateScanner() {
   const [lookupQuery, setLookupQuery] = useState('')
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError,  setCameraError]  = useState(null)
-  const [scanning, setScanning] = useState(false) // true while RAF loop is live
-  const [debugInfo, setDebugInfo] = useState('')
-  const frameCountRef = useRef(0)
+  const [scanning, setScanning] = useState(false) // true while the decoder is live
 
-  const videoRef    = useRef(null)
-  const canvasRef   = useRef(null)
-  const streamRef   = useRef(null)   // MediaStream
-  const rafRef      = useRef(null)   // requestAnimationFrame handle
+  const scannerRef  = useRef(null)   // Html5Qrcode instance
   const cooldownRef = useRef(false)  // brief per-decode pause so flash renders
 
   // ── flash auto-reset ────────────────────────────────────────────────────────
   useEffect(() => {
     if (!flash) return
-    // Resume scan loop after flash clears (2 s)
+    // Resume decoding after flash clears (2 s)
     const t = setTimeout(() => {
       setFlash(null)
       cooldownRef.current = false
@@ -71,156 +78,69 @@ export default function GateScanner() {
   }, [flash])
 
   // ── scan result handler ──────────────────────────────────────────────────────
-  const doScan = useCallback((token) => {
+  const doScan = useCallback(async (token) => {
     if (cooldownRef.current) return   // flash is showing, swallow extra decodes
     cooldownRef.current = true
-    console.log('[scanner] decoded token:', token) // debug — remove after confirming
-    const r = processScan(token)
+    const r = await processScan(token, { gateId: 'gate-1', scannedBy: user?.uid || 'staff' })
     setResult(r)
     const kind = r.outcome === 'accepted' ? r.direction : 'rejected'
     setFlash({ kind, r })
-  }, [])
+  }, [user?.uid])
 
-  // ── RAF decode loop ──────────────────────────────────────────────────────────
-  const startLoop = useCallback(() => {
-    const video  = videoRef.current
-    const canvas = canvasRef.current
-    if (!video || !canvas) return
-    const ctx = canvas.getContext('2d', { willReadFrequently: true })
-    frameCountRef.current = 0
-
-    const tick = () => {
-      if (video.readyState === video.HAVE_ENOUGH_DATA && !cooldownRef.current) {
-        const vw = video.videoWidth
-        const vh = video.videoHeight
-        canvas.width  = vw
-        canvas.height = vh
-
-        ctx.drawImage(video, 0, 0, vw, vh)
-        const img = ctx.getImageData(0, 0, vw, vh)
-
-        // Manual grayscale + contrast stretch — ctx.filter doesn't affect
-        // getImageData pixel data in most browsers, so we do it in-buffer.
-        const d = img.data
-        for (let i = 0; i < d.length; i += 4) {
-          const gray = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2]
-          const v = gray < 128 ? Math.max(0, gray - 30) : Math.min(255, gray + 30)
-          d[i] = d[i + 1] = d[i + 2] = v
-        }
-
-        const code = jsQR(d, vw, vh, { inversionAttempts: 'attemptBoth' })
-        frameCountRef.current++
-
-        // Update debug info every 30 frames (~0.5s)
-        if (frameCountRef.current % 30 === 0) {
-          setDebugInfo(`${vw}x${vh} · frame ${frameCountRef.current}${code ? ' · decoded' : ''}`)
-        }
-
-        if (code) doScan(code.data)
-      }
-      rafRef.current = requestAnimationFrame(tick)
-    }
-    rafRef.current = requestAnimationFrame(tick)
-    setScanning(true)
-  }, [doScan])
-
-  // ── apply continuous autofocus on the track ──────────────────────────────────
-  const applyAutofocus = useCallback(async (stream) => {
-    const [track] = stream.getVideoTracks()
-    if (!track) return
-    const caps = track.getCapabilities?.() || {}
-    const constraints = {}
-    if (caps.focusMode?.includes?.('continuous')) {
-      constraints.focusMode = 'continuous'
-    }
-    // Prefer a moderate zoom-in (1.5×) so the QR fills more pixels
-    if (caps.zoom) {
-      const zoom = Math.min(caps.zoom.max, Math.max(caps.zoom.min, 1.5))
-      constraints.zoom = zoom
-    }
-    if (Object.keys(constraints).length) {
-      try { await track.applyConstraints({ advanced: [constraints] }) } catch (_) {}
-    }
-  }, [])
-
-  // ── camera start ─────────────────────────────────────────────────────────────
+  // ── camera start (html5-qrcode owns the stream + decode loop) ────────────────
   const startCamera = useCallback(async () => {
     setCameraError(null)
-    // Stop any lingering stream first — previous tab/reload may not have cleaned up
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
+    if (scannerRef.current) {
+      try { await scannerRef.current.stop() } catch (_) {}
+      try { scannerRef.current.clear() } catch (_) {}
+      scannerRef.current = null
     }
     try {
-      const stream = await navigator.mediaDevices.getUserMedia({
-        video: {
-          facingMode: { ideal: 'environment' },
-          width:  { ideal: 1280 },
-          height: { ideal: 720 },
-        },
-        audio: false,
-      })
-      streamRef.current = stream
-      const video = videoRef.current
-      video.srcObject = stream
-      await video.play()
-      await applyAutofocus(stream)
+      const scanner = new Html5Qrcode(SCANNER_ELEMENT_ID, { verbose: false })
+      scannerRef.current = scanner
+      await scanner.start(
+        { facingMode: 'environment' },   // prefer the rear camera at a gate
+        { fps: 10, qrbox: { width: 240, height: 240 }, aspectRatio: 1.0 },
+        (decodedText) => { doScan(decodedText) },   // success — a QR was decoded
+        () => {},                                    // per-frame "not found" — ignore
+      )
       setCameraActive(true)
-      startLoop()
+      setScanning(true)
     } catch (err) {
+      const name = err?.name || ''
       const msg =
-        err?.name === 'NotAllowedError'  ? 'Camera permission denied. Allow it in browser settings then retry.' :
-        err?.name === 'NotFoundError'    ? 'No camera found on this device.' :
-        err?.name === 'NotReadableError' ? 'Camera is in use by another app. Close it and retry.' :
-        (err?.message || 'Could not access camera.')
+        name === 'NotAllowedError'  ? 'Camera permission denied. Allow it in browser settings then retry.' :
+        name === 'NotFoundError'    ? 'No camera found on this device.' :
+        name === 'NotReadableError' ? 'Camera is in use by another app. Close it and retry.' :
+        (err?.message || String(err) || 'Could not access camera.')
       setCameraError(msg)
+      scannerRef.current = null
     }
-  }, [applyAutofocus, startLoop])
+  }, [doScan])
 
   // ── camera stop ──────────────────────────────────────────────────────────────
-  const stopCamera = useCallback(() => {
-    if (rafRef.current) { cancelAnimationFrame(rafRef.current); rafRef.current = null }
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach((t) => t.stop())
-      streamRef.current = null
+  const stopCamera = useCallback(async () => {
+    const scanner = scannerRef.current
+    scannerRef.current = null
+    if (scanner) {
+      try { await scanner.stop() } catch (_) {}
+      try { scanner.clear() } catch (_) {}
     }
-    if (videoRef.current) videoRef.current.srcObject = null
     setCameraActive(false)
     setScanning(false)
   }, [])
 
   // Stop on unmount
-  useEffect(() => () => stopCamera(), [stopCamera])
-
-  // ── tap-to-focus ─────────────────────────────────────────────────────────────
-  const handleViewportTap = useCallback(async (e) => {
-    if (!streamRef.current) return
-    const [track] = streamRef.current.getVideoTracks()
-    if (!track) return
-    const caps = track.getCapabilities?.() || {}
-    // Try pointOfInterest focus (Chrome Android / some webcams)
-    if (caps.focusMode?.includes?.('single-shot') && caps.pointOfInterest) {
-      const rect = e.currentTarget.getBoundingClientRect()
-      const x = (e.clientX - rect.left) / rect.width
-      const y = (e.clientY - rect.top)  / rect.height
-      try {
-        await track.applyConstraints({ advanced: [{ focusMode: 'single-shot', pointOfInterest: { x, y } }] })
-        // Switch back to continuous after the one-shot settles
-        setTimeout(async () => {
-          try { await track.applyConstraints({ advanced: [{ focusMode: 'continuous' }] }) } catch (_) {}
-        }, 1000)
-      } catch (_) {}
-    }
-  }, [])
+  useEffect(() => () => { stopCamera() }, [stopCamera])
 
   // ── simulate helpers ──────────────────────────────────────────────────────────
-  const simulate        = () => doScan(anyApprovedToken(gateEvent) || 'invalid-token')
+  const simulate        = () => doScan(anyApprovedTokenFrom(gateSnapshot) || 'invalid-token')
   const simulateInvalid = () => doScan('totally-invalid-qr')
 
   // Manual lookup — only filter & render when user has typed something.
   // Cap at 20 results so the list stays snappy even for large events.
   const LOOKUP_MIN_CHARS = 2
-  const allApprovedAttendees = listAttendees(gateEvent).filter(
+  const allApprovedAttendees = listAttendeesFrom(gateSnapshot).filter(
     (a) => a.status === 'approved' && a.qr_token,
   )
   const lookupList = lookupQuery.trim().length >= LOOKUP_MIN_CHARS
@@ -364,22 +284,12 @@ export default function GateScanner() {
           </p>
         )}
 
-        {/* Camera viewport */}
-        <div
-          className="relative w-full overflow-hidden rounded-2xl border border-white/15 bg-black shadow-e3 cursor-crosshair"
-          onClick={handleViewportTap}
-          title="Tap to focus"
-        >
-          {/* Hidden canvas used for jsQR frame grabs — never visible */}
-          <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
-
-          {/* Live video */}
-          <video
-            ref={videoRef}
-            muted
-            playsInline
-            className="w-full"
-            style={{ minHeight: 320, display: cameraActive ? 'block' : 'none' }}
+        {/* Camera viewport — html5-qrcode injects its <video> into this div */}
+        <div className="relative w-full overflow-hidden rounded-2xl border border-white/15 bg-black shadow-e3">
+          <div
+            id={SCANNER_ELEMENT_ID}
+            className="w-full [&_video]:w-full [&_video]:rounded-2xl"
+            style={{ minHeight: cameraActive ? 320 : 0 }}
           />
 
           {/* Overlay when camera is off */}
@@ -411,28 +321,19 @@ export default function GateScanner() {
             </div>
           )}
 
-          {/* Amber corner guides + tap-to-focus hint */}
+          {/* Amber corner guides — align the QR inside them */}
           {cameraActive && (
-            <>
-              <div className="pointer-events-none absolute inset-10 rounded-xl">
-                <span className="absolute left-0 top-0 h-8 w-8 rounded-tl-lg border-l-4 border-t-4 border-brand-amber" />
-                <span className="absolute right-0 top-0 h-8 w-8 rounded-tr-lg border-r-4 border-t-4 border-brand-amber" />
-                <span className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-lg border-b-4 border-l-4 border-brand-amber" />
-                <span className="absolute bottom-0 right-0 h-8 w-8 rounded-br-lg border-b-4 border-r-4 border-brand-amber" />
-              </div>
-          <p className="pointer-events-none absolute bottom-2 w-full text-center text-[10px] text-white/40">
-                Tap viewport to focus
-              </p>
-            </>
+            <div className="pointer-events-none absolute inset-10 rounded-xl">
+              <span className="absolute left-0 top-0 h-8 w-8 rounded-tl-lg border-l-4 border-t-4 border-brand-amber" />
+              <span className="absolute right-0 top-0 h-8 w-8 rounded-tr-lg border-r-4 border-t-4 border-brand-amber" />
+              <span className="absolute bottom-0 left-0 h-8 w-8 rounded-bl-lg border-b-4 border-l-4 border-brand-amber" />
+              <span className="absolute bottom-0 right-0 h-8 w-8 rounded-br-lg border-b-4 border-r-4 border-brand-amber" />
+            </div>
           )}
         </div>
 
         {/* Controls */}
         <div className="mt-5 space-y-2.5">
-          {/* Debug info — shows video resolution + frame count to confirm loop is running */}
-          {scanning && debugInfo && (
-            <p className="text-center font-mono text-[10px] text-white/30">{debugInfo}</p>
-          )}
           {cameraActive && (
             <button
               onClick={stopCamera}

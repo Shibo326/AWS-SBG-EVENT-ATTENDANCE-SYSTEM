@@ -2,45 +2,60 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Card, Button, Badge, Avatar, EmptyState } from '../components/ui.jsx'
-import { getEvent, listAttendees, attendeeStats, certflowRows, analyticalRows } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { listAttendeesFrom, attendeeStatsFrom, certflowRowsFrom, analyticalRowsFrom } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { formatDuration } from '../lib/time.js'
 import { toCSV, downloadCSV } from '../lib/csv.js'
+import { downloadAttendancePdf } from '../lib/pdf.js'
 import { toast } from '../components/Toast.jsx'
-import { Alert, GradCap, Grid, ArrowRight, ArrowUpRight } from '../components/icons.jsx'
+import { Alert, GradCap, Grid, FileText, ArrowRight, ArrowUpRight } from '../components/icons.jsx'
 
 // Deployed CertFlow app (the group's standalone bulk certificate generator + emailer).
 // The handoff is a CSV: export the eligible list here, then open CertFlow to upload it.
 const CERTFLOW_URL = 'https://awsc-certificate-automation.streamlit.app'
 
 export default function AdminExport() {
-  useStore()
   const { eventId } = useParams()
+  const { event, loading } = useEvent(eventId)
   const [filter, setFilter] = useState('all')
-  const event = getEvent(eventId)
 
+  if (loading) {
+    return (
+      <AdminLayout>
+        <div className="h-8 w-52 animate-pulse rounded bg-brand-surfaceAlt" />
+        <div className="mt-6 h-64 animate-pulse rounded-2xl bg-brand-surfaceAlt/60" />
+      </AdminLayout>
+    )
+  }
   if (!event) return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
 
-  const rows = listAttendees(eventId)
+  const rows = listAttendeesFrom(event)
     .filter((a) => a.status === 'approved')
-    .map((a) => ({ a, st: attendeeStats(eventId, a.id) }))
+    .map((a) => ({ a, st: attendeeStatsFrom(event, a.id) }))
     .sort((x, y) => y.st.totalMinutes - x.st.totalMinutes)
 
   const shown = rows.filter((r) => filter === 'all' || (filter === 'eligible' ? r.st.isEligible : !r.st.isEligible))
   const eligibleCount = rows.filter((r) => r.st.isEligible).length
   const flagged = rows.filter((r) => r.st.capped || (r.st.isInside)).length
 
-  const slug = event.meta.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
+  const slug = (event.meta?.name || 'event').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '')
 
   const exportCertflow = () => {
-    const data = certflowRows(eventId)
+    const data = certflowRowsFrom(event)
     downloadCSV(`${slug}-certflow.csv`, toCSV(data, ['name', 'email']))
     toast(`Exported ${data.length} eligible attendee${data.length !== 1 ? 's' : ''} for CertFlow`, 'success')
   }
   const exportAnalytical = () => {
-    const data = analyticalRows(eventId)
+    const data = analyticalRowsFrom(event)
     downloadCSV(`${slug}-attendance.csv`, toCSV(data, ['name', 'email', 'organization', 'year_section', 'total_minutes', 'sessions', 'eligible', 'review']))
     toast('Analytical CSV downloaded', 'success')
+  }
+  const exportPdf = () => {
+    // Respects the current filter (all / eligible / not) so the printed report
+    // matches what the admin is looking at.
+    const pdfFilter = filter === 'not' ? 'not' : filter
+    const n = downloadAttendancePdf(event, pdfFilter)
+    toast(`PDF report downloaded (${n} attendee${n !== 1 ? 's' : ''})`, 'success')
   }
 
   return (
@@ -56,7 +71,7 @@ export default function AdminExport() {
         </Card>
       )}
 
-      <div className="mb-6 grid gap-4 sm:grid-cols-2">
+      <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <Card interactive className="flex items-center gap-4 p-5">
           <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-amberSoft text-brand-amberDark"><GradCap size={24} /></div>
           <div className="min-w-0 flex-1">
@@ -72,6 +87,14 @@ export default function AdminExport() {
             <p className="text-xs text-brand-muted">All approved · times, sessions, flags</p>
           </div>
           <Button variant="outline" onClick={exportAnalytical}>Download</Button>
+        </Card>
+        <Card interactive className="flex items-center gap-4 p-5">
+          <div className="grid h-12 w-12 shrink-0 place-items-center rounded-xl bg-brand-surfaceAlt text-brand-muted"><FileText size={24} /></div>
+          <div className="min-w-0 flex-1">
+            <h3 className="font-display font-semibold text-brand-ink">PDF report</h3>
+            <p className="text-xs text-brand-muted">Header + table · records threshold &amp; countable hours · matches the current filter</p>
+          </div>
+          <Button variant="outline" onClick={exportPdf} disabled={rows.length === 0}>Download</Button>
         </Card>
       </div>
 

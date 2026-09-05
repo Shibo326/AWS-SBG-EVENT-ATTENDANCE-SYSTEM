@@ -1,21 +1,49 @@
-import { useState } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import { useParams } from 'react-router-dom'
 import { Card, Button, Badge, QRCode, ProgressBar, StatusBadge, Field, Input } from '../components/ui.jsx'
-import { findByClaim, getEvent, attendeeStats, acceptedScansFor, requestReview, myReviewRequests } from '../lib/store.js'
-import { useStore, useNow } from '../lib/hooks.js'
+import {
+  findByClaim, fetchEvent, attendeeStatsFrom, acceptedScansForFrom,
+  requestReview, reviewRequestsForFrom,
+} from '../lib/db.js'
+import { useNow } from '../lib/dbHooks.js'
 import { formatDuration, formatDateTime, formatTime } from '../lib/time.js'
 import { toast } from '../components/Toast.jsx'
 import { Search, Clock, X, Check } from '../components/icons.jsx'
 
 export default function StudentSelfService() {
-  useStore()
   const now = useNow(1000)
   const { claimToken } = useParams()
   const [reviewOpen, setReviewOpen] = useState(false)
   const [reviewMsg, setReviewMsg] = useState('')
-  const found = findByClaim(claimToken)
+  const [loading, setLoading] = useState(true)
+  const [found, setFound] = useState(null)   // { eventId, attendeeId, attendee }
+  const [event, setEvent] = useState(null)   // event snapshot
 
-  if (!found) {
+  // Self-service uses ONE-TIME READS, not live listeners, to conserve the
+  // Firebase Spark 100-connection budget shared across concurrent events
+  // (PROJECT_PLAN §9 / §11). We re-read on demand (e.g. after a scan-out) rather
+  // than holding an open socket per attendee. The live timer ticks locally.
+  const load = useCallback(async () => {
+    const f = await findByClaim(claimToken)
+    setFound(f)
+    if (f) setEvent(await fetchEvent(f.eventId))
+    setLoading(false)
+  }, [claimToken])
+
+  useEffect(() => { load() }, [load])
+
+  if (loading) {
+    return (
+      <Shell>
+        <Card className="p-8 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-brand-line border-t-brand-amber" />
+          <p className="mt-3 text-sm text-brand-muted">Loading your page…</p>
+        </Card>
+      </Shell>
+    )
+  }
+
+  if (!found || !event) {
     return (
       <Shell>
         <Card className="p-8 text-center">
@@ -27,11 +55,11 @@ export default function StudentSelfService() {
     )
   }
 
-  const { eventId, attendee } = found
-  const event = getEvent(eventId)
+  const { attendee } = found
+  const eventId = found.eventId
   const meta = event.meta
-  const st = attendeeStats(eventId, attendee.id, now)
-  const scans = acceptedScansFor(eventId, attendee.id).sort((a, b) => b.scanned_at - a.scanned_at)
+  const st = attendeeStatsFrom(event, attendee.id, now)
+  const scans = acceptedScansForFrom(event, attendee.id).sort((a, b) => b.scanned_at - a.scanned_at)
 
   return (
     <Shell>
@@ -124,7 +152,7 @@ export default function StudentSelfService() {
 
           {/* Request review — creates a dispute trail the admin sees on the dashboard */}
           <div className="mt-4">
-            {myReviewRequests(eventId, attendee.id).some((r) => r.status === 'open') ? (
+            {reviewRequestsForFrom(event, attendee.id).some((r) => r.status === 'open') ? (
               <Card className="p-4 text-center">
                 <p className="flex items-center justify-center gap-1.5 text-sm text-brand-teal"><Check size={15} />Your review request was sent. An organizer will check your record.</p>
               </Card>
@@ -140,11 +168,12 @@ export default function StudentSelfService() {
                 <div className="mt-3 flex gap-2">
                   <Button
                     size="sm"
-                    onClick={() => {
-                      requestReview(eventId, attendee.id, reviewMsg)
+                    onClick={async () => {
+                      await requestReview(eventId, attendee.id, reviewMsg)
                       setReviewOpen(false)
                       setReviewMsg('')
                       toast('Review request sent', 'success')
+                      load() // re-read so the "request sent" state shows
                     }}
                   >
                     Send request

@@ -1,6 +1,6 @@
 import { Link, useParams, useLocation } from 'react-router-dom'
-import { getEvent, eventTypeInfo } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { eventTypeInfo } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight } from './icons.jsx'
 
 const NAV = [
@@ -16,10 +16,9 @@ const NAV_STANDALONE = [
 ]
 
 export default function AdminLayout({ children }) {
-  useStore()
   const { eventId } = useParams()
   const location = useLocation()
-  const event = eventId ? getEvent(eventId) : null
+  const { event } = useEvent(eventId)
   const meta = event?.meta
 
   const currentSeg = location.pathname.split('/').slice(4).join('/') || ''
