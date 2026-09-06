@@ -117,7 +117,7 @@ function Shell({ children }) {
     <div className="min-h-screen bg-brand-ink py-8 px-4">
       <div className="mx-auto max-w-md">
         <div className="mb-5 flex items-center justify-center gap-2.5 text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink shadow-e1">A</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink on-accent shadow-e1">A</span>
           <span className="font-display font-semibold tracking-tight">AWS Student Builder Group</span>
         </div>
         {children}
@@ -130,7 +130,7 @@ function EventHeader({ meta, settings }) {
   return (
     <Card className="overflow-hidden">
       <div className="bg-brand-navy p-5 text-white">
-        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink">{eventTypeInfo(meta.event_type).label}</span>
+        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink on-accent">{eventTypeInfo(meta.event_type).label}</span>
         <h1 className="mt-2.5 font-display text-xl font-bold tracking-tight">{meta.name}</h1>
         {meta.venue && <p className="mt-1 flex items-center gap-1.5 text-sm text-white/70"><MapPin size={14} className="shrink-0" />{meta.venue}</p>}
       </div>

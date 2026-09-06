@@ -4,8 +4,9 @@ import jsQRModule from 'jsqr'
 // jsqr ships CJS — the default export may be nested under .default in some bundlers
 const jsQR = typeof jsQRModule === 'function' ? jsQRModule : jsQRModule?.default
 import { listEvents, anyApprovedToken, processScan, listAttendees } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { useStore, useWakeLock } from '../lib/hooks.js'
 import { formatDuration, formatTime } from '../lib/time.js'
+import { playForScan, setMuted } from '../lib/sound.js'
 import { ArrowDown, ArrowUp, X, Check, Camera, CameraOff, Dice, Search, ArrowRight } from '../components/icons.jsx'
 
 // Module 4 gate scanner — jsQR + raw getUserMedia for full stream control.
@@ -47,11 +48,17 @@ export default function GateScanner() {
   const [flash, setFlash]         = useState(null)
   const [lookupOpen, setLookupOpen]   = useState(false)
   const [lookupQuery, setLookupQuery] = useState('')
+  const [lookupIndex, setLookupIndex] = useState(0)
+  const [soundOn, setSoundOn] = useState(true)
   const [cameraActive, setCameraActive] = useState(false)
+  const [cameraLoading, setCameraLoading] = useState(false)
   const [cameraError,  setCameraError]  = useState(null)
   const [scanning, setScanning] = useState(false) // true while RAF loop is live
   const [debugInfo, setDebugInfo] = useState('')
   const frameCountRef = useRef(0)
+
+  // Keep the phone awake while the camera runs (gate queues are long).
+  useWakeLock(cameraActive)
 
   const videoRef    = useRef(null)
   const canvasRef   = useRef(null)
@@ -74,9 +81,10 @@ export default function GateScanner() {
   const doScan = useCallback((token) => {
     if (cooldownRef.current) return   // flash is showing, swallow extra decodes
     cooldownRef.current = true
-    console.log('[scanner] decoded token:', token) // debug — remove after confirming
+    if (import.meta.env.DEV) console.log('[scanner] decoded token:', token)
     const r = processScan(token)
     setResult(r)
+    playForScan(r) // distinct audio cue per outcome
     const kind = r.outcome === 'accepted' ? r.direction : 'rejected'
     setFlash({ kind, r })
   }, [])
@@ -146,6 +154,7 @@ export default function GateScanner() {
   // ── camera start ─────────────────────────────────────────────────────────────
   const startCamera = useCallback(async () => {
     setCameraError(null)
+    setCameraLoading(true)
     // Stop any lingering stream first — previous tab/reload may not have cleaned up
     if (streamRef.current) {
       streamRef.current.getTracks().forEach((t) => t.stop())
@@ -166,6 +175,7 @@ export default function GateScanner() {
       await video.play()
       await applyAutofocus(stream)
       setCameraActive(true)
+      setCameraLoading(false)
       startLoop()
     } catch (err) {
       const msg =
@@ -174,6 +184,7 @@ export default function GateScanner() {
         err?.name === 'NotReadableError' ? 'Camera is in use by another app. Close it and retry.' :
         (err?.message || 'Could not access camera.')
       setCameraError(msg)
+      setCameraLoading(false)
     }
   }, [applyAutofocus, startLoop])
 
@@ -233,13 +244,36 @@ export default function GateScanner() {
     doScan(attendee.qr_token)
     setLookupOpen(false)
     setLookupQuery('')
+    setLookupIndex(0)
+  }
+
+  // Keyboard navigation for the lookup list: ↑/↓ to move, Enter to pick.
+  const handleLookupKey = (e) => {
+    if (!lookupList.length) return
+    if (e.key === 'ArrowDown') {
+      e.preventDefault()
+      setLookupIndex((i) => Math.min(i + 1, lookupList.length - 1))
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault()
+      setLookupIndex((i) => Math.max(i - 1, 0))
+    } else if (e.key === 'Enter') {
+      e.preventDefault()
+      const pick = lookupList[Math.min(lookupIndex, lookupList.length - 1)]
+      if (pick) recordManual(pick)
+    }
   }
 
   const fb = flash ? (FEEDBACK[flash.kind] || FEEDBACK.rejected) : null
 
   // ── render ────────────────────────────────────────────────────────────────────
   return (
-    <div className="min-h-screen bg-brand-ink text-white">
+    <div
+      className="min-h-screen bg-brand-ink text-white"
+      style={{
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}
+    >
 
       {/* Full-screen colour flash */}
       {flash && (
@@ -248,13 +282,14 @@ export default function GateScanner() {
           role="status"
           aria-live="assertive"
         >
-          <fb.Icon size={104} strokeWidth={2.5} />
-          <div className="mt-3 font-display text-4xl font-bold uppercase tracking-widest">{fb.label}</div>
+          <fb.Icon size={80} strokeWidth={2.5} className="sm:hidden" />
+          <fb.Icon size={104} strokeWidth={2.5} className="hidden sm:block" />
+          <div className="mt-3 font-display text-3xl font-bold uppercase tracking-widest sm:text-4xl">{fb.label}</div>
           {flash.r.attendee && (
-            <div className="mt-6 font-display text-5xl font-bold leading-tight">{flash.r.attendee.full_name}</div>
+            <div className="mt-5 break-words font-display text-4xl font-bold leading-tight sm:mt-6 sm:text-5xl">{flash.r.attendee.full_name}</div>
           )}
           {flash.r.outcome === 'accepted' ? (
-            <div className="mt-5 text-xl text-white/95">
+            <div className="mt-5 text-lg text-white/95 sm:text-xl">
               <span className="tabular">Total inside: {formatDuration(flash.r.stats.totalMinutes)}</span>
               <span className="mx-2 text-white/50">·</span>
               <span className="tabular">{formatTime(flash.r.at)}</span>
@@ -287,12 +322,13 @@ export default function GateScanner() {
             <input
               autoFocus
               value={lookupQuery}
-              onChange={(e) => setLookupQuery(e.target.value)}
+              onChange={(e) => { setLookupQuery(e.target.value); setLookupIndex(0) }}
+              onKeyDown={handleLookupKey}
               placeholder="Type the attendee's name…"
               className="h-12 w-full rounded-xl border border-white/20 bg-brand-navy px-4 text-white placeholder:text-white/40 focus:border-brand-amber focus:outline-none focus:ring-2 focus:ring-brand-amber/40"
             />
             <p className="mt-2 text-xs text-white/50">
-              Use when a QR won&rsquo;t scan. Tap a name to record IN/OUT — logged as a manual entry.
+              Use when a QR won&rsquo;t scan. ↑↓ to move, Enter to pick, or tap a name — logged as a manual entry.
             </p>
           </div>
           <div className="flex-1 overflow-y-auto px-4 pb-6">
@@ -308,11 +344,17 @@ export default function GateScanner() {
                   <p className="mb-3 text-center text-xs text-white/40">Showing top 20 — type more to narrow down.</p>
                 )}
                 <ul className="space-y-2">
-                  {lookupList.map((a) => (
+                  {lookupList.map((a, idx) => (
                     <li key={a.id}>
                       <button
                         onClick={() => recordManual(a)}
-                        className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-brand-navy p-3 text-left transition-colors hover:border-brand-amber/50 hover:bg-white/5"
+                        onMouseEnter={() => setLookupIndex(idx)}
+                        aria-selected={idx === lookupIndex}
+                        className={`flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors ${
+                          idx === lookupIndex
+                            ? 'border-brand-amber bg-brand-amber/10'
+                            : 'border-white/10 bg-brand-navy hover:border-brand-amber/50 hover:bg-white/5'
+                        }`}
                       >
                         <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-amber/20 font-semibold text-brand-amber">
                           {a.full_name.split(' ').slice(0, 2).map((w) => w[0]).join('')}
@@ -335,13 +377,23 @@ export default function GateScanner() {
       {/* Header */}
       <header className="flex items-center justify-between border-b border-white/10 px-4 py-3">
         <Link to="/admin" className="flex items-center gap-2.5 font-display font-bold">
-          <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand-amber text-brand-ink">A</span>
+          <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand-amber text-brand-ink on-accent">A</span>
           Gate Scanner
         </Link>
-        <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs">
-          <span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'bg-brand-teal animate-pulse-ring' : 'bg-white/30'}`} aria-hidden="true" />
-          {scanning ? 'Scanning' : 'Idle'}
-        </span>
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => { const v = !soundOn; setSoundOn(v); setMuted(!v) }}
+            aria-pressed={!soundOn}
+            className="rounded-full bg-white/10 px-3 py-1 text-xs transition-colors hover:bg-white/20 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
+            title={soundOn ? 'Mute scan sounds' : 'Unmute scan sounds'}
+          >
+            {soundOn ? '🔊 Sound' : '🔇 Muted'}
+          </button>
+          <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs">
+            <span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'bg-brand-teal animate-pulse-ring' : 'bg-white/30'}`} aria-hidden="true" />
+            {scanning ? 'Scanning' : 'Idle'}
+          </span>
+        </div>
       </header>
 
       <div className="mx-auto max-w-md px-4 py-6">
@@ -364,34 +416,42 @@ export default function GateScanner() {
           </p>
         )}
 
-        {/* Camera viewport */}
+        {/* Camera viewport — fixed square so framing is consistent across devices */}
         <div
-          className="relative w-full overflow-hidden rounded-2xl border border-white/15 bg-black shadow-e3 cursor-crosshair"
+          className="relative aspect-square w-full overflow-hidden rounded-2xl border border-white/15 bg-black shadow-e3 cursor-crosshair"
           onClick={handleViewportTap}
           title="Tap to focus"
         >
           {/* Hidden canvas used for jsQR frame grabs — never visible */}
           <canvas ref={canvasRef} className="hidden" aria-hidden="true" />
 
-          {/* Live video */}
+          {/* Live video — fills the square viewport */}
           <video
             ref={videoRef}
             muted
             playsInline
-            className="w-full"
-            style={{ minHeight: 320, display: cameraActive ? 'block' : 'none' }}
+            className="h-full w-full object-cover"
+            style={{ display: cameraActive ? 'block' : 'none' }}
           />
 
+          {/* Loading overlay while the camera spins up */}
+          {cameraLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
+              <span className="h-10 w-10 animate-spin rounded-full border-2 border-white/20 border-t-brand-amber" aria-hidden="true" />
+              <p className="text-sm text-white/60">Starting camera…</p>
+            </div>
+          )}
+
           {/* Overlay when camera is off */}
-          {!cameraActive && (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
+          {!cameraActive && !cameraLoading && (
+            <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-center">
               {cameraError ? (
                 <>
                   <CameraOff size={40} className="text-red-400" />
                   <p className="max-w-xs px-4 text-sm text-red-400">{cameraError}</p>
                   <button
                     onClick={startCamera}
-                    className="mt-1 rounded-lg bg-brand-amber px-4 py-2 text-sm font-bold text-brand-ink"
+                    className="mt-1 rounded-lg bg-brand-amber px-4 py-2 text-sm font-bold text-brand-ink on-accent"
                   >
                     Retry
                   </button>
@@ -402,7 +462,7 @@ export default function GateScanner() {
                   <p className="text-sm text-white/60">Tap to start camera</p>
                   <button
                     onClick={startCamera}
-                    className="mt-1 rounded-xl bg-brand-amber px-6 py-2.5 font-bold text-brand-ink shadow-e2 transition hover:bg-brand-amberDark"
+                    className="mt-1 rounded-xl bg-brand-amber px-6 py-2.5 font-bold text-brand-ink on-accent shadow-e2 transition hover:bg-brand-amberDark"
                   >
                     Start camera
                   </button>
@@ -429,8 +489,8 @@ export default function GateScanner() {
 
         {/* Controls */}
         <div className="mt-5 space-y-2.5">
-          {/* Debug info — shows video resolution + frame count to confirm loop is running */}
-          {scanning && debugInfo && (
+          {/* Debug info — dev only, hidden in production builds */}
+          {import.meta.env.DEV && scanning && debugInfo && (
             <p className="text-center font-mono text-[10px] text-white/30">{debugInfo}</p>
           )}
           {cameraActive && (
@@ -476,7 +536,7 @@ export default function GateScanner() {
             ) : (
               <div className="mt-1.5">
                 <p className="text-sm text-white/80">{result.message}</p>
-                {result.decodedToken && (
+                {import.meta.env.DEV && result.decodedToken && (
                   <p className="mt-1 break-all font-mono text-[10px] text-white/40">decoded: {result.decodedToken}</p>
                 )}
               </div>

@@ -28,10 +28,10 @@ export function Button({ variant = 'primary', size = 'md', as, to, className = '
     lg: 'h-12 px-7 text-base',
   }
   const variants = {
-    primary: 'bg-brand-amber text-brand-ink shadow-e1 hover:bg-brand-amberDark hover:shadow-e2',
+    primary: 'bg-brand-amber text-brand-ink on-accent shadow-e1 hover:bg-brand-amberDark hover:shadow-e2',
     secondary: 'bg-brand-ink text-white shadow-e1 hover:bg-brand-navy hover:shadow-e2',
-    outline: 'border border-brand-line bg-white text-brand-ink hover:bg-brand-surfaceAlt',
-    ghost: 'bg-transparent text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink',
+    outline: 'border border-brand-line bg-white text-brand-ink hover:bg-brand-surfaceAlt dark:bg-brand-darkCard dark:border-brand-darkLine dark:text-brand-surface dark:hover:bg-brand-navy',
+    ghost: 'bg-transparent text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink dark:hover:bg-brand-navy dark:hover:text-brand-surface',
     danger: 'bg-brand-red text-white shadow-e1 hover:brightness-110',
     success: 'bg-brand-green text-white shadow-e1 hover:brightness-110',
   }
@@ -47,7 +47,7 @@ export function Card({ className = '', interactive = false, children }) {
     ? 'shadow-e1 transition-shadow hover:shadow-e2'
     : 'shadow-e1'
   return (
-    <div className={`bg-white ${RADIUS} border border-brand-line ${lift} ${className}`}>
+    <div className={`bg-white dark:bg-brand-darkCard dark:border-brand-darkLine ${RADIUS} border border-brand-line ${lift} ${className}`}>
       {children}
     </div>
   )
@@ -56,13 +56,13 @@ export function Card({ className = '', interactive = false, children }) {
 /* ── Badge ──────────────────────────────────────────────────────────────── */
 export function Badge({ tone = 'muted', children }) {
   const tones = {
-    green: 'bg-brand-greenSoft text-brand-green ring-brand-green/20',
-    amber: 'bg-brand-amberSoft text-brand-amberDark ring-brand-amberDark/20',
-    teal: 'bg-brand-tealSoft text-brand-teal ring-brand-teal/20',
-    gray: 'bg-brand-surfaceAlt text-brand-muted ring-brand-muted/20',
-    red: 'bg-brand-redSoft text-brand-red ring-brand-red/20',
-    blue: 'bg-brand-tealSoft text-brand-teal ring-brand-teal/20',
-    muted: 'bg-brand-surfaceAlt text-brand-muted ring-brand-muted/20',
+    green: 'bg-brand-greenSoft text-brand-green ring-brand-green/20 dark:bg-brand-green/20 dark:text-emerald-300',
+    amber: 'bg-brand-amberSoft text-brand-amberDark ring-brand-amberDark/20 dark:bg-brand-amber/20 dark:text-brand-amber',
+    teal: 'bg-brand-tealSoft text-brand-teal ring-brand-teal/20 dark:bg-brand-teal/20 dark:text-teal-300',
+    gray: 'bg-brand-surfaceAlt text-brand-muted ring-brand-muted/20 dark:bg-white/10 dark:text-stone-300',
+    red: 'bg-brand-redSoft text-brand-red ring-brand-red/20 dark:bg-brand-red/20 dark:text-red-300',
+    blue: 'bg-brand-tealSoft text-brand-teal ring-brand-teal/20 dark:bg-brand-teal/20 dark:text-teal-300',
+    muted: 'bg-brand-surfaceAlt text-brand-muted ring-brand-muted/20 dark:bg-white/10 dark:text-stone-300',
   }
   return (
     <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ring-1 ring-inset ${tones[tone] || tones.muted}`}>
@@ -75,11 +75,11 @@ export function Badge({ tone = 'muted', children }) {
    A single headline metric. `live` gives it the teal pulse for real-time counts. */
 export function Stat({ label, value, tone = 'ink', hint, live = false }) {
   const tones = {
-    ink: 'text-brand-ink',
-    green: 'text-brand-green',
-    amber: 'text-brand-amberDark',
-    teal: 'text-brand-teal',
-    red: 'text-brand-red',
+    ink: 'text-brand-ink dark:text-brand-surface',
+    green: 'text-brand-green dark:text-emerald-400',
+    amber: 'text-brand-amberDark dark:text-brand-amber',
+    teal: 'text-brand-teal dark:text-teal-300',
+    red: 'text-brand-red dark:text-red-400',
     muted: 'text-brand-muted',
   }
   return (
@@ -101,7 +101,7 @@ export function Field({ label, hint, error, required, children, htmlFor }) {
   return (
     <div className="space-y-1.5">
       {label && (
-        <label htmlFor={htmlFor} className="block text-sm font-medium text-brand-ink">
+        <label htmlFor={htmlFor} className="block text-sm font-medium text-brand-ink dark:text-brand-surface">
           {label}
           {required && <span className="ml-0.5 text-brand-red" aria-hidden="true">*</span>}
         </label>
@@ -120,6 +120,7 @@ export function Field({ label, hint, error, required, children, htmlFor }) {
 const controlBase =
   'h-11 w-full rounded-xl border bg-white px-3.5 text-sm text-brand-ink ' +
   'placeholder:text-brand-muted/60 transition-colors ' +
+  'dark:bg-brand-darkSurface dark:text-brand-surface dark:border-brand-darkLine ' +
   'focus:outline-none focus:ring-2 focus:ring-brand-amber/40'
 
 export function Input({ className = '', invalid = false, ...props }) {
@@ -197,7 +198,7 @@ export function EmptyState({ icon, title, description, action }) {
       <div className="grid h-14 w-14 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted" aria-hidden="true">
         <Glyph size={26} />
       </div>
-      <h3 className="mt-4 font-display text-lg font-semibold text-brand-ink">{title}</h3>
+      <h3 className="mt-4 font-display text-lg font-semibold text-brand-ink dark:text-brand-surface">{title}</h3>
       {description && <p className="mt-1.5 max-w-sm text-sm leading-relaxed text-brand-muted">{description}</p>}
       {action && <div className="mt-6">{action}</div>}
     </Card>

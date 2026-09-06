@@ -169,7 +169,7 @@ function Shell({ children }) {
     <div className="min-h-screen bg-brand-ink py-8 px-4">
       <div className="mx-auto max-w-md">
         <div className="mb-5 flex items-center justify-center gap-2.5 text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink shadow-e1">A</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink on-accent shadow-e1">A</span>
           <span className="font-display font-semibold tracking-tight">AWS Student Builder Group</span>
         </div>
         {children}

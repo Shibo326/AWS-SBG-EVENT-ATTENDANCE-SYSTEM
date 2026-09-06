@@ -397,10 +397,28 @@ export function approveAttendee(eventId, attendeeId) {
 export function rejectAttendee(eventId, attendeeId) {
   const e = db.events[eventId]
   const a = e?.attendees[attendeeId]
-  if (!a) return
+  if (!a) return null
+  // Capture prior state so the action can be undone.
+  const prev = { status: a.status, qr_token: a.qr_token, approved_at: a.approved_at }
   a.status = 'rejected'
   if (a.qr_token) delete db.qr_index[a.qr_token]
   a.qr_token = null
+  notify()
+  return prev
+}
+
+/** Restore an attendee to a previously captured state (for Undo). */
+export function restoreAttendee(eventId, attendeeId, prev) {
+  const e = db.events[eventId]
+  const a = e?.attendees[attendeeId]
+  if (!a || !prev) return
+  a.status = prev.status
+  a.approved_at = prev.approved_at
+  if (prev.qr_token) {
+    a.qr_token = prev.qr_token
+    a.qr_revoked = false
+    db.qr_index[prev.qr_token] = { eventId, attendeeId }
+  }
   notify()
 }
 

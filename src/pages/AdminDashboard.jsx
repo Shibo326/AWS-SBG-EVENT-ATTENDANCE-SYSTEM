@@ -15,6 +15,7 @@ export default function AdminDashboard() {
   const [query, setQuery] = useState('')
   const [reviewOnly, setReviewOnly] = useState(false)
   const [fixFor, setFixFor] = useState(null)
+  const [visibleCount, setVisibleCount] = useState(50)
   const event = getEvent(eventId)
 
   if (!event) {
@@ -31,7 +32,7 @@ export default function AdminDashboard() {
     <AdminLayout>
       <PageHeader title="Live dashboard" subtitle={`${event.meta.venue} · updates in real time`} />
 
-      <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 sm:gap-4 lg:grid-cols-6">
         <Stat label="Currently inside" value={s.inside} tone="teal" live />
         <Stat label="Registered" value={s.registered} />
         <Stat label="Not yet arrived" value={s.notArrived} tone="muted" />
@@ -46,15 +47,26 @@ export default function AdminDashboard() {
         {/* Attendee list */}
         <div className="lg:col-span-2">
           <Card className="overflow-hidden">
-            <div className="flex items-center justify-between gap-3 border-b border-brand-line p-4">
+            <div className="flex flex-wrap items-center justify-between gap-3 border-b border-brand-line p-4">
               <h2 className="font-display font-semibold text-brand-ink">Attendees</h2>
-              <Input className="h-9 max-w-[200px]" placeholder="Search name or email" value={query} onChange={(e) => setQuery(e.target.value)} />
+              <Input className="h-9 w-full sm:w-auto sm:max-w-[220px]" placeholder="Search name or email" value={query} onChange={(e) => setQuery(e.target.value)} />
             </div>
             {attendees.length === 0 ? (
-              <div className="p-8 text-center text-sm text-brand-muted">No approved attendees match.</div>
+              <div className="p-6">
+                <EmptyState
+                  icon={query || reviewOnly ? Search : undefined}
+                  title={query ? 'No match' : reviewOnly ? 'Nothing needs review' : 'No attendees yet'}
+                  description={
+                    query ? `No approved attendee matches "${query}".`
+                      : reviewOnly ? 'No flagged records right now — everything looks clean.'
+                      : 'Approved attendees appear here once they register and you approve them.'
+                  }
+                  action={reviewOnly ? <Button size="sm" variant="outline" onClick={() => setReviewOnly(false)}>Show all</Button> : undefined}
+                />
+              </div>
             ) : (
               <ul className="divide-y divide-brand-line">
-                {attendees.map((a) => {
+                {attendees.slice(0, visibleCount).map((a) => {
                   const st = attendeeStats(eventId, a.id, now)
                   return (
                     <li key={a.id} className="flex items-center gap-3 p-4">
@@ -70,23 +82,33 @@ export default function AdminDashboard() {
                             <Badge tone="gray">Not arrived</Badge>
                           )}
                         </div>
-                        <p className="truncate text-xs text-brand-muted">{a.email}{a.year_section ? ` · ${a.year_section}` : ''}</p>
+                        <p className="truncate text-xs text-brand-muted">
+                          {a.email}{a.year_section ? ` · ${a.year_section}` : ''}
+                          <span className="tabular sm:hidden"> · {formatDuration(st.totalMinutes)}/{formatDuration(st.requiredMinutes)}</span>
+                        </p>
                       </div>
-                      <div className="hidden w-40 sm:block">
+                      <div className="hidden w-36 shrink-0 md:block lg:w-40">
                         <div className="flex items-center justify-between text-xs tabular">
                           <span className="font-medium text-brand-ink">{formatDuration(st.totalMinutes)}</span>
                           <span className="text-brand-muted">{formatDuration(st.requiredMinutes)}</span>
                         </div>
                         <div className="mt-1.5"><ProgressBar pct={st.progressPct} tone={st.isEligible ? 'green' : 'amber'} label={`${a.full_name} progress`} /></div>
                       </div>
-                      <div className="flex w-32 items-center justify-end gap-2">
+                      <div className="flex shrink-0 items-center justify-end gap-1.5 sm:gap-2">
                         {attendeeNeedsReview(eventId, a.id, now) && <Badge tone="red">Review</Badge>}
-                        {st.isEligible ? <Badge tone="green">Eligible</Badge> : <span className="tabular text-xs text-brand-muted">{formatDuration(st.remainingMinutes)}</span>}
+                        {st.isEligible ? <Badge tone="green">Eligible</Badge> : <span className="hidden tabular text-xs text-brand-muted sm:inline">{formatDuration(st.remainingMinutes)}</span>}
                         <Button size="sm" variant="ghost" onClick={() => setFixFor(a)} aria-label={`Fix ${a.full_name}`}>Fix</Button>
                       </div>
                     </li>
                   )
                 })}
+                {attendees.length > visibleCount && (
+                  <li className="p-4 text-center">
+                    <Button variant="outline" size="sm" onClick={() => setVisibleCount((c) => c + 50)}>
+                      Show more ({attendees.length - visibleCount} left)
+                    </Button>
+                  </li>
+                )}
               </ul>
             )}
           </Card>

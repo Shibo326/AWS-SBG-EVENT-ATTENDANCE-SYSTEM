@@ -15,6 +15,7 @@
 
 export default {
   content: ['./index.html', './src/**/*.{js,jsx}'],
+  darkMode: 'class',
   theme: {
     extend: {
       colors: {
@@ -43,6 +44,11 @@ export default {
           amberWarn: '#B45309',
           red: '#B91C1C',
           redSoft: '#FEE2E2',
+
+          // Dark-mode surfaces (warm, not pure gray) — used via dark: variants
+          darkSurface: '#1C1917',  // page-level dark (matches navy)
+          darkCard: '#292524',     // lifted card surface in dark
+          darkLine: '#3F3A34',     // hairline in dark
         },
       },
       fontFamily: {

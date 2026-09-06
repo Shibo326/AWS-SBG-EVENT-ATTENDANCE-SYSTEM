@@ -2,10 +2,16 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Card, Button, Badge, Avatar, StatusBadge, EmptyState, QRCode, Field, Input } from '../components/ui.jsx'
-import { getEvent, listAttendees, approveAttendee, rejectAttendee, registerAttendee, getAttendee } from '../lib/store.js'
+import { getEvent, listAttendees, approveAttendee, rejectAttendee, restoreAttendee, registerAttendee, getAttendee } from '../lib/store.js'
 import { useStore } from '../lib/hooks.js'
-import { toast } from '../components/Toast.jsx'
+import { toast, toastAction } from '../components/Toast.jsx'
 import { Search, Check, Download, Link2 } from '../components/icons.jsx'
+
+// Reject one attendee, capturing prior state, and offer an Undo toast.
+function rejectWithUndo(eventId, attendee) {
+  const prev = rejectAttendee(eventId, attendee.id)
+  toastAction(`Rejected ${attendee.full_name}`, 'Undo', () => restoreAttendee(eventId, attendee.id, prev), 'warn')
+}
 
 const TABS = [
   { key: 'pending', label: 'Pending' },
@@ -20,6 +26,7 @@ export default function AdminRegistrations() {
   const [adding, setAdding] = useState(false)
   const [qrFor, setQrFor] = useState(null)
   const [query, setQuery] = useState('')
+  const [selected, setSelected] = useState(() => new Set())
   const event = getEvent(eventId)
 
   if (!event) return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
@@ -50,7 +57,7 @@ export default function AdminRegistrations() {
           {TABS.map((t) => (
             <button
               key={t.key}
-              onClick={() => setTab(t.key)}
+              onClick={() => { setTab(t.key); setSelected(new Set()) }}
               aria-pressed={tab === t.key}
               className={`rounded-full px-4 py-2 text-sm font-medium transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber focus-visible:ring-offset-2 focus-visible:ring-offset-brand-surface ${
                 tab === t.key ? 'bg-brand-ink text-white shadow-e1' : 'border border-brand-line bg-white text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink'
@@ -73,23 +80,48 @@ export default function AdminRegistrations() {
         </div>
       </div>
 
-      {tab === 'pending' && rows.length > 0 && (
-        <div className="mb-3 flex items-center gap-2">
-          <Button
-            size="sm" variant="success"
-            onClick={() => { const n = rows.length; rows.forEach((a) => approveAttendee(eventId, a.id)); toast(`Approved ${n} attendee${n !== 1 ? 's' : ''} — QR issued`, 'success') }}
-          >
-            Approve all {rows.length}
-          </Button>
-          <Button
-            size="sm" variant="outline"
-            onClick={() => { const n = rows.length; rows.forEach((a) => rejectAttendee(eventId, a.id)); toast(`Rejected ${n} registration${n !== 1 ? 's' : ''}`, 'warn') }}
-          >
-            Reject all
-          </Button>
-          <span className="text-xs text-brand-muted">Bulk actions apply to the current view.</span>
-        </div>
-      )}
+      {tab === 'pending' && rows.length > 0 && (() => {
+        const selectedRows = rows.filter((a) => selected.has(a.id))
+        const hasSelection = selectedRows.length > 0
+        const targets = hasSelection ? selectedRows : rows
+        const scopeLabel = hasSelection ? `${selectedRows.length} selected` : `all ${rows.length}`
+        const doApprove = () => {
+          targets.forEach((a) => approveAttendee(eventId, a.id))
+          toast(`Approved ${targets.length} attendee${targets.length !== 1 ? 's' : ''} — QR issued`, 'success')
+          setSelected(new Set())
+        }
+        const doReject = () => {
+          const snapshot = targets.map((a) => ({ id: a.id, prev: rejectAttendee(eventId, a.id) }))
+          toastAction(
+            `Rejected ${targets.length} registration${targets.length !== 1 ? 's' : ''}`,
+            'Undo',
+            () => snapshot.forEach((s) => restoreAttendee(eventId, s.id, s.prev)),
+            'warn',
+          )
+          setSelected(new Set())
+        }
+        return (
+          <div className="mb-3 flex flex-wrap items-center gap-2">
+            <label className="flex items-center gap-2 text-sm text-brand-muted">
+              <input
+                type="checkbox"
+                className="h-4 w-4 accent-brand-amber"
+                checked={selected.size > 0 && rows.every((a) => selected.has(a.id))}
+                ref={(el) => { if (el) el.indeterminate = hasSelection && !rows.every((a) => selected.has(a.id)) }}
+                onChange={(e) => setSelected(e.target.checked ? new Set(rows.map((a) => a.id)) : new Set())}
+              />
+              Select all
+            </label>
+            <Button size="sm" variant="success" onClick={doApprove}>Approve {scopeLabel}</Button>
+            <Button size="sm" variant="outline" onClick={doReject}>Reject {scopeLabel}</Button>
+            {hasSelection && (
+              <button onClick={() => setSelected(new Set())} className="text-xs text-brand-muted underline hover:text-brand-ink">
+                Clear selection
+              </button>
+            )}
+          </div>
+        )
+      })()}
 
       {rows.length === 0 ? (
         <EmptyState
@@ -102,6 +134,19 @@ export default function AdminRegistrations() {
           <ul className="divide-y divide-brand-line">
             {rows.map((a) => (
               <li key={a.id} className="flex flex-wrap items-center gap-3 p-4">
+                {tab === 'pending' && (
+                  <input
+                    type="checkbox"
+                    className="h-4 w-4 shrink-0 accent-brand-amber"
+                    checked={selected.has(a.id)}
+                    onChange={(e) => setSelected((cur) => {
+                      const next = new Set(cur)
+                      if (e.target.checked) next.add(a.id); else next.delete(a.id)
+                      return next
+                    })}
+                    aria-label={`Select ${a.full_name}`}
+                  />
+                )}
                 <Avatar name={a.full_name} />
                 <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2">
@@ -116,7 +161,7 @@ export default function AdminRegistrations() {
                   {a.status === 'pending' && (
                     <>
                       <Button size="sm" variant="success" onClick={() => { approveAttendee(eventId, a.id); toast(`Approved ${a.full_name} — QR issued`, 'success') }}>Approve</Button>
-                      <Button size="sm" variant="outline" onClick={() => { rejectAttendee(eventId, a.id); toast(`Rejected ${a.full_name}`, 'warn') }}>Reject</Button>
+                      <Button size="sm" variant="outline" onClick={() => rejectWithUndo(eventId, a)}>Reject</Button>
                     </>
                   )}
                   {a.status === 'approved' && (

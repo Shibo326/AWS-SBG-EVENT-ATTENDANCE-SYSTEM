@@ -133,7 +133,7 @@ export default function AdminSettings() {
         </Card>
 
         <Card className="p-6 lg:col-span-2">
-          <div className="mb-4 flex items-center justify-between">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h2 className="font-display font-semibold text-brand-ink">Active windows (countable hours)</h2>
               <p className="text-sm text-brand-muted">Time only counts inside these windows — so overnight and breaks don't inflate totals.</p>
@@ -143,17 +143,17 @@ export default function AdminSettings() {
           <div className="space-y-3">
             {windows.map((w) => (
               <div key={w.id} className="flex flex-wrap items-end gap-3 rounded-xl border border-brand-line bg-brand-surfaceAlt p-3.5">
-                <div className="flex-1 min-w-[140px]">
+                <div className="w-full min-w-[140px] sm:flex-1">
                   <label className="text-xs font-medium text-brand-muted">Label</label>
                   <Input className="h-9" value={w.label} onChange={(e) => setWindows((ws) => ws.map((x) => x.id === w.id ? { ...x, label: e.target.value } : x))} />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1 sm:flex-none">
                   <label className="text-xs font-medium text-brand-muted">Starts</label>
-                  <Input className="h-9" type="datetime-local" value={toLocalInput(w.starts_at)} onChange={(e) => updateWindow(w.id, 'starts_at', e.target.value)} />
+                  <Input className="h-9 w-full" type="datetime-local" value={toLocalInput(w.starts_at)} onChange={(e) => updateWindow(w.id, 'starts_at', e.target.value)} />
                 </div>
-                <div>
+                <div className="min-w-0 flex-1 sm:flex-none">
                   <label className="text-xs font-medium text-brand-muted">Ends</label>
-                  <Input className="h-9" type="datetime-local" value={toLocalInput(w.ends_at)} onChange={(e) => updateWindow(w.id, 'ends_at', e.target.value)} />
+                  <Input className="h-9 w-full" type="datetime-local" value={toLocalInput(w.ends_at)} onChange={(e) => updateWindow(w.id, 'ends_at', e.target.value)} />
                 </div>
                 <Badge tone="teal">{formatDuration(Math.max(0, (w.ends_at - w.starts_at) / 60000))}</Badge>
                 {windows.length > 1 && <Button size="sm" variant="ghost" onClick={() => removeWindow(w.id)}>Remove</Button>}

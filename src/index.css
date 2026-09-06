@@ -18,6 +18,35 @@
     background-attachment: fixed;
   }
 
+  /* Dark mode — warm dark surfaces, same amber accent. Flips the page shell;
+     shared components carry their own dark: variants for surfaces on top. */
+  .dark body {
+    @apply bg-brand-ink text-brand-surface;
+    background-image:
+      radial-gradient(1200px 600px at 100% -10%, rgba(245, 158, 11, 0.08), transparent 60%),
+      radial-gradient(900px 500px at -10% 110%, rgba(13, 148, 136, 0.06), transparent 55%);
+  }
+  .dark :focus-visible {
+    @apply ring-offset-brand-ink;
+  }
+
+  /* Page content uses the ink token heavily for headings/body. Rather than add
+     a dark: variant to every one, remap the token itself in dark mode so all
+     text-brand-ink text becomes legible on dark surfaces. Amber/green/red/muted
+     tints stay as-is (they read fine on dark). Elements that intentionally sit
+     on the amber chip keep their ink color via the .on-accent escape hatch. */
+  .dark .text-brand-ink:not(.on-accent) {
+    color: #F5EFE6;
+  }
+  /* Secondary dark body text — invisible on dark surfaces otherwise */
+  .dark .text-brand-slate:not(.on-accent) {
+    color: #C9C1B5;
+  }
+  /* Warm-dark surfaces for the token-based fills used in page content */
+  .dark .bg-white:not(.on-accent) { background-color: #292524; }
+  .dark .bg-brand-surfaceAlt { background-color: #24211E; }
+  .dark .border-brand-line { border-color: #3F3A34; }
+
   /* Headings lean on the display face with tight leading */
   h1, h2, h3 {
     @apply font-display;
