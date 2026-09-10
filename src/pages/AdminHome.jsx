@@ -2,10 +2,11 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Button, Card, Badge, Field, Input, Select, EmptyState } from '../components/ui.jsx'
-import { createEvent, eventStatsFrom, eventTypeInfo, eventTypes } from '../lib/db.js'
+import { createEvent, setEventStatus, eventStatsFrom, eventTypeInfo, eventTypes } from '../lib/db.js'
 import { useEvents } from '../lib/dbHooks.js'
 import { useAuth } from '../lib/auth.jsx'
 import { formatDate } from '../lib/time.js'
+import { toast } from '../components/Toast.jsx'
 import { Plus, Ticket, ArrowRight } from '../components/icons.jsx'
 
 const statusTone = { active: 'green', draft: 'gray', ended: 'blue', archived: 'muted' }
@@ -15,14 +16,39 @@ const NewEventLabel = () => <><Plus size={16} />New event</>
 export default function AdminHome() {
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
+  const [showArchived, setShowArchived] = useState(false)
   const { events, loading } = useEvents()
+
+  const archivedCount = events.filter((e) => e.meta?.status === 'archived').length
+  const visible = showArchived ? events : events.filter((e) => e.meta?.status !== 'archived')
+
+  // Move an event through its lifecycle: draft → active → ended, archive, or
+  // restore an archived one back to draft. Reversible (Module 0).
+  const changeStatus = async (ev, status) => {
+    try {
+      await setEventStatus(ev.id, status)
+      const label = { active: 'activated', ended: 'ended', archived: 'archived', draft: 'restored to draft' }[status]
+      toast(`${ev.meta?.name || 'Event'} ${label}`, status === 'archived' ? 'warn' : 'success')
+    } catch (_) {
+      toast('Could not update the event status.', 'error')
+    }
+  }
 
   return (
     <AdminLayout>
       <PageHeader
         title="Events"
         subtitle="Every event the AWS SBG team manages. Open one to run it, or create a new one."
-        actions={<Button onClick={() => setCreating(true)}><NewEventLabel /></Button>}
+        actions={
+          <>
+            {archivedCount > 0 && (
+              <Button variant="ghost" onClick={() => setShowArchived((v) => !v)}>
+                {showArchived ? 'Hide archived' : `Show archived (${archivedCount})`}
+              </Button>
+            )}
+            <Button onClick={() => setCreating(true)}><NewEventLabel /></Button>
+          </>
+        }
       />
 
       {creating && <CreateEventForm onClose={() => setCreating(false)} onCreated={(id) => navigate(`/admin/event/${id}/settings`)} />}
@@ -33,21 +59,23 @@ export default function AdminHome() {
             <Card key={i} className="h-48 animate-pulse bg-brand-surfaceAlt/60" />
           ))}
         </div>
-      ) : events.length === 0 ? (
+      ) : visible.length === 0 ? (
         <EmptyState
           icon={Ticket}
-          title="No events yet"
-          description="Create your first event to start registering attendees and tracking time."
+          title={events.length === 0 ? 'No events yet' : 'No active events'}
+          description={events.length === 0
+            ? 'Create your first event to start registering attendees and tracking time.'
+            : 'All events are archived. Use “Show archived” to see them.'}
           action={<Button onClick={() => setCreating(true)}><NewEventLabel /></Button>}
         />
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          {events.map((ev) => {
+          {visible.map((ev) => {
             const meta = ev.meta || {}
             const s = eventStatsFrom(ev)
             const isLive = meta.status === 'active'
             return (
-              <Card key={ev.id} interactive className="flex flex-col p-5">
+              <Card key={ev.id} className="flex flex-col p-5">
                 <div className="flex items-start justify-between gap-2">
                   <Badge tone={statusTone[meta.status] || 'gray'}>
                     {isLive && <span className="h-1.5 w-1.5 rounded-full bg-brand-green animate-pulse-ring" aria-hidden="true" />}
@@ -62,7 +90,27 @@ export default function AdminHome() {
                   <Mini label="Registered" value={s.registered} />
                   <Mini label="Eligible" value={s.eligible} tone="amber" />
                 </div>
-                <div className="mt-auto flex items-center justify-between pt-5">
+
+                {/* Lifecycle controls (Module 0). draft can't be scanned until
+                    activated; ended stops new time; archive hides + is reversible. */}
+                <div className="mt-4 flex flex-wrap gap-1.5 border-t border-brand-line pt-3">
+                  {meta.status === 'draft' && (
+                    <Button size="sm" variant="success" onClick={() => changeStatus(ev, 'active')}>Activate</Button>
+                  )}
+                  {meta.status === 'active' && (
+                    <Button size="sm" variant="outline" onClick={() => changeStatus(ev, 'ended')}>End event</Button>
+                  )}
+                  {meta.status === 'ended' && (
+                    <Button size="sm" variant="outline" onClick={() => changeStatus(ev, 'active')}>Re-open</Button>
+                  )}
+                  {meta.status === 'archived' ? (
+                    <Button size="sm" variant="ghost" onClick={() => changeStatus(ev, 'draft')}>Restore</Button>
+                  ) : (
+                    <Button size="sm" variant="ghost" onClick={() => changeStatus(ev, 'archived')}>Archive</Button>
+                  )}
+                </div>
+
+                <div className="mt-auto flex items-center justify-between pt-4">
                   <span className="text-xs text-brand-muted">Created {meta.created_at ? formatDate(meta.created_at) : '—'}</span>
                   <Button size="sm" to={`/admin/event/${ev.id}`}>Open<ArrowRight size={15} /></Button>
                 </div>

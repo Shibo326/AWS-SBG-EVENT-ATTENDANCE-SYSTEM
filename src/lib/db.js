@@ -30,7 +30,7 @@ import {
   orderByChild,
   equalTo,
 } from 'firebase/database'
-import { db } from './firebase.js'
+import { db, auth } from './firebase.js'
 import { computeAttendeeTime } from './time.js'
 
 // ── event type metadata (mirrors store.js) ──────────────────────────────────
@@ -424,6 +424,25 @@ export async function revokeAttendee(eventId, attendeeId) {
 }
 
 /**
+ * Re-issue a QR (admin): mint a FRESH token and null the previous one so the
+ * old QR — shared, screenshotted, or printed — stops working instead of
+ * becoming a second valid copy (§9.1). Nulls the old /qr_index entry, writes
+ * the new one, and clears qr_revoked. Returns { qr_token }.
+ */
+export async function reissueAttendee(eventId, attendeeId) {
+  const attSnap = await get(child(attendeesRef(eventId), attendeeId))
+  const a = attSnap.val()
+  const qr_token = randomToken()
+  const updates = {}
+  updates[`events/${eventId}/attendees/${attendeeId}/qr_token`] = qr_token
+  updates[`events/${eventId}/attendees/${attendeeId}/qr_revoked`] = false
+  if (a?.qr_token) updates[`qr_index/${a.qr_token}`] = null   // invalidate the prior copy
+  updates[`qr_index/${qr_token}`] = { event_id: eventId, attendee_id: attendeeId }
+  await update(ref(db), updates)
+  return { qr_token }
+}
+
+/**
  * Append a scan event (append-only, §9.2). scanned_at is a SERVER timestamp so
  * a client cannot backdate it (§9.3). Returns the scan's push key.
  */
@@ -614,11 +633,22 @@ export async function syncOfflineScan(item) {
   const stateThen = attendeeStatsFrom(ev, attendeeId, item.clientTs)
   const direction = stateThen.isInside ? 'out' : 'in'
 
+  // The corrections rule requires corrected_by === auth.uid (§9.3). A buffered
+  // scan must therefore carry the real staff uid, captured at enqueue time. If
+  // it is missing (scan enqueued before auth resolved), we THROW rather than
+  // write a record the rules will reject — the queue keeps the item and retries
+  // once a proper uid is available, instead of wedging on a permission error.
+  const currentUid = auth.currentUser?.uid || null
+  const correctedBy = item.scannedBy && item.scannedBy !== 'staff' ? item.scannedBy : currentUid
+  if (!correctedBy) {
+    throw new Error('Offline scan has no staff uid yet — will retry after sign-in.')
+  }
+
   const res = await addCorrection(eventId, attendeeId, {
     type: 'insert_missing_scan',
     payload: { direction, timestamp: item.clientTs },
     reason: `Offline scan synced on reconnect (gate ${item.gateId}, ref ${item.clientId})`,
-    corrected_by: item.scannedBy || 'scanner',
+    corrected_by: correctedBy,
   })
   if (res.error) throw new Error(res.error)
   return { eventId, attendeeId, direction }

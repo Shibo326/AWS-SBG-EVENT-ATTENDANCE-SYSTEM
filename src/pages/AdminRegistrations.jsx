@@ -2,13 +2,13 @@ import { useState } from 'react'
 import { useParams } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Card, Button, Badge, Avatar, StatusBadge, EmptyState, QRCode, Field, Input } from '../components/ui.jsx'
-import { listAttendeesFrom, approveAttendee, rejectAttendee, registerAttendee } from '../lib/db.js'
+import { listAttendeesFrom, approveAttendee, rejectAttendee, registerAttendee, revokeAttendee, reissueAttendee } from '../lib/db.js'
 import { useEvent } from '../lib/dbHooks.js'
 import { useAuth } from '../lib/auth.jsx'
 import { sendQrTicket } from '../lib/email.js'
 import { parseCSV } from '../lib/csv.js'
 import { toast } from '../components/Toast.jsx'
-import { Search, Check, Download, Link2, Alert } from '../components/icons.jsx'
+import { Search, Check, Download, Link2, Alert, X } from '../components/icons.jsx'
 
 const TABS = [
   { key: 'pending', label: 'Pending' },
@@ -162,7 +162,10 @@ export default function AdminRegistrations() {
                     </>
                   )}
                   {a.status === 'approved' && (
-                    <Button size="sm" variant="outline" onClick={() => setQrFor(a)}>View QR</Button>
+                    <>
+                      {a.qr_revoked && <Badge tone="red"><X size={12} />Revoked</Badge>}
+                      <Button size="sm" variant="outline" onClick={() => setQrFor(a)}>View QR</Button>
+                    </>
                   )}
                   {a.status === 'rejected' && (
                     <Button size="sm" variant="ghost" onClick={async () => { await approveAndEmail(eventId, a, eventName, uid); toast(`Restored ${a.full_name}`, 'success') }}>Restore</Button>
@@ -174,7 +177,7 @@ export default function AdminRegistrations() {
         </Card>
       )}
 
-      {qrFor && <QRModal attendee={qrFor} onClose={() => setQrFor(null)} />}
+      {qrFor && <QRModal attendee={qrFor} eventId={eventId} eventName={eventName} onClose={() => setQrFor(null)} onChanged={setQrFor} />}
     </AdminLayout>
   )
 }
@@ -226,10 +229,41 @@ function ManualAdd({ eventId, eventName, uid, onClose, onIssued }) {
   )
 }
 
-function QRModal({ attendee, onClose }) {
+function QRModal({ attendee, eventId, eventName, onClose, onChanged }) {
   const [copied, setCopied] = useState(false)
+  const [busy, setBusy] = useState(false)
   const claimUrl = `${window.location.origin}/me/${attendee.claim_token}`
   const fileBase = attendee.full_name.replace(/[^a-z0-9]+/gi, '-').replace(/^-|-$/g, '').toLowerCase()
+
+  // Revoke: the QR stops working at the gate immediately (rejected_revoked).
+  const revoke = async () => {
+    setBusy(true)
+    try {
+      await revokeAttendee(eventId, attendee.id)
+      toast(`Revoked ${attendee.full_name}'s QR`, 'warn')
+      onChanged?.({ ...attendee, qr_revoked: true })
+    } catch (_) {
+      toast('Could not revoke the QR.', 'error')
+    }
+    setBusy(false)
+  }
+
+  // Re-issue: mint a fresh token (old one stops working), then re-email it.
+  const reissue = async () => {
+    setBusy(true)
+    try {
+      const { qr_token } = await reissueAttendee(eventId, attendee.id)
+      sendQrTicket({
+        toEmail: attendee.email, toName: attendee.full_name,
+        eventName, qrToken: qr_token, claimToken: attendee.claim_token,
+      })
+      toast(`Re-issued ${attendee.full_name}'s QR — old one no longer works`, 'success')
+      onChanged?.({ ...attendee, qr_token, qr_revoked: false })
+    } catch (_) {
+      toast('Could not re-issue the QR.', 'error')
+    }
+    setBusy(false)
+  }
 
   const download = () => {
     // QRCode renders to a <canvas> (id "qr-ticket-svg"), so we export the PNG
@@ -274,13 +308,37 @@ function QRModal({ attendee, onClose }) {
               <QRCode value={attendee.qr_token} size={220} id="qr-ticket-svg" />
             </div>
           </div>
-          <p className="mt-4 text-xs text-brand-muted">
-            The attendee shows this at the gate to scan in and out.
-          </p>
+          {attendee.qr_revoked ? (
+            <p className="mt-4 flex items-center justify-center gap-1.5 rounded-lg bg-brand-redSoft px-3 py-2 text-xs font-medium text-brand-red">
+              <X size={14} />This QR is revoked and will be rejected at the gate. Re-issue to give a new one.
+            </p>
+          ) : (
+            <p className="mt-4 text-xs text-brand-muted">
+              The attendee shows this at the gate to scan in and out.
+            </p>
+          )}
 
           <div className="mt-5 grid grid-cols-2 gap-2">
             <Button variant="secondary" onClick={download}><Download size={16} />Download QR</Button>
             <Button variant="outline" onClick={copyLink}>{copied ? <><Check size={16} />Copied</> : <><Link2 size={16} />Copy link</>}</Button>
+          </div>
+
+          {/* Revoke stops a shared/lost QR at the gate; re-issue mints a fresh
+              one so the old copy stops working instead of doubling (§9.1). */}
+          <div className="mt-2 grid grid-cols-2 gap-2">
+            {!attendee.qr_revoked && (
+              <Button variant="outline" onClick={revoke} disabled={busy} className="text-brand-red">
+                <X size={16} />Revoke
+              </Button>
+            )}
+            <Button
+              variant="outline"
+              onClick={reissue}
+              disabled={busy}
+              className={attendee.qr_revoked ? 'col-span-2' : ''}
+            >
+              {busy ? 'Working…' : 'Re-issue QR'}
+            </Button>
           </div>
 
           <div className="mt-3 rounded-xl bg-brand-surfaceAlt p-3 text-left">

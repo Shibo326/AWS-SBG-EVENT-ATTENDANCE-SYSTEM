@@ -113,7 +113,10 @@ export default function GateScanner() {
   const doScan = useCallback(async (token) => {
     if (cooldownRef.current) return   // flash is showing, swallow extra decodes
     cooldownRef.current = true
-    const scannedBy = user?.uid || 'staff'
+    // Capture the real staff uid — an offline scan is later synced as a
+    // correction whose corrected_by MUST equal auth.uid (rules §9.3), so we
+    // never fall back to a placeholder string for the buffered path.
+    const scannedBy = user?.uid || null
 
     // Offline: buffer the scan and confirm immediately — the gate keeps moving.
     // It syncs (preserving its timestamp) on reconnect (R3 / criterion 13).
