@@ -2,8 +2,9 @@ import { useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import AdminLayout, { PageHeader } from '../components/AdminLayout.jsx'
 import { Button, Card, Badge, Field, Input, Select, EmptyState } from '../components/ui.jsx'
-import { listEvents, createEvent, eventStats, eventTypeInfo, eventTypes } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { createEvent, eventStatsFrom, eventTypeInfo, eventTypes } from '../lib/db.js'
+import { useEvents } from '../lib/dbHooks.js'
+import { useAuth } from '../lib/auth.jsx'
 import { formatDate } from '../lib/time.js'
 import { Plus, Ticket, ArrowRight } from '../components/icons.jsx'
 
@@ -12,10 +13,9 @@ const statusTone = { active: 'green', draft: 'gray', ended: 'blue', archived: 'm
 const NewEventLabel = () => <><Plus size={16} />New event</>
 
 export default function AdminHome() {
-  useStore()
   const navigate = useNavigate()
   const [creating, setCreating] = useState(false)
-  const events = listEvents()
+  const { events, loading } = useEvents()
 
   return (
     <AdminLayout>
@@ -27,7 +27,13 @@ export default function AdminHome() {
 
       {creating && <CreateEventForm onClose={() => setCreating(false)} onCreated={(id) => navigate(`/admin/event/${id}/settings`)} />}
 
-      {events.length === 0 ? (
+      {loading ? (
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <Card key={i} className="h-48 animate-pulse bg-brand-surfaceAlt/60" />
+          ))}
+        </div>
+      ) : events.length === 0 ? (
         <EmptyState
           icon={Ticket}
           title="No events yet"
@@ -37,26 +43,27 @@ export default function AdminHome() {
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
           {events.map((ev) => {
-            const s = eventStats(ev.id)
-            const isLive = ev.status === 'active'
+            const meta = ev.meta || {}
+            const s = eventStatsFrom(ev)
+            const isLive = meta.status === 'active'
             return (
               <Card key={ev.id} interactive className="flex flex-col p-5">
                 <div className="flex items-start justify-between gap-2">
-                  <Badge tone={statusTone[ev.status] || 'gray'}>
+                  <Badge tone={statusTone[meta.status] || 'gray'}>
                     {isLive && <span className="h-1.5 w-1.5 rounded-full bg-brand-green animate-pulse-ring" aria-hidden="true" />}
-                    {ev.status}
+                    {meta.status}
                   </Badge>
-                  <span className="text-xs font-medium text-brand-muted">{eventTypeInfo(ev.event_type).label}</span>
+                  <span className="text-xs font-medium text-brand-muted">{eventTypeInfo(meta.event_type).label}</span>
                 </div>
-                <h3 className="mt-3 font-display text-lg font-semibold text-brand-ink">{ev.name}</h3>
-                <p className="mt-1 text-sm text-brand-muted">{ev.venue || 'No venue set'}</p>
+                <h3 className="mt-3 font-display text-lg font-semibold text-brand-ink">{meta.name}</h3>
+                <p className="mt-1 text-sm text-brand-muted">{meta.venue || 'No venue set'}</p>
                 <div className="mt-4 grid grid-cols-3 gap-2 text-center">
                   <Mini label="Inside" value={s.inside} tone="teal" />
                   <Mini label="Registered" value={s.registered} />
                   <Mini label="Eligible" value={s.eligible} tone="amber" />
                 </div>
                 <div className="mt-auto flex items-center justify-between pt-5">
-                  <span className="text-xs text-brand-muted">Created {formatDate(ev.created_at)}</span>
+                  <span className="text-xs text-brand-muted">Created {meta.created_at ? formatDate(meta.created_at) : '—'}</span>
                   <Button size="sm" to={`/admin/event/${ev.id}`}>Open<ArrowRight size={15} /></Button>
                 </div>
               </Card>
@@ -79,16 +86,24 @@ function Mini({ label, value, tone = 'ink' }) {
 }
 
 function CreateEventForm({ onClose, onCreated }) {
+  const { user } = useAuth()
   const [name, setName] = useState('')
   const [type, setType] = useState('seminar')
   const [venue, setVenue] = useState('')
   const [err, setErr] = useState('')
 
-  const submit = (e) => {
+  const [saving, setSaving] = useState(false)
+  const submit = async (e) => {
     e.preventDefault()
     if (!name.trim()) return setErr('Give the event a name.')
-    const id = createEvent({ name: name.trim(), event_type: type, venue: venue.trim() })
-    onCreated(id)
+    setSaving(true)
+    try {
+      const id = await createEvent({ name: name.trim(), event_type: type, venue: venue.trim(), created_by: user?.uid })
+      onCreated(id)
+    } catch (_) {
+      setErr('Could not create the event. Please try again.')
+      setSaving(false)
+    }
   }
 
   return (
@@ -109,7 +124,7 @@ function CreateEventForm({ onClose, onCreated }) {
           <Input id="ev-venue" value={venue} onChange={(e) => setVenue(e.target.value)} placeholder="e.g. STI Global City — Room 501" />
         </Field>
         <div className="flex gap-2">
-          <Button type="submit">Create & configure</Button>
+          <Button type="submit" disabled={saving}>{saving ? 'Creating…' : 'Create & configure'}</Button>
           <Button type="button" variant="ghost" onClick={onClose}>Cancel</Button>
         </div>
       </form>

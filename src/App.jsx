@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
 import { ToastHost } from './components/Toast.jsx'
+import RequireStaff from './components/RequireStaff.jsx'
 import PublicRegister from './pages/PublicRegister.jsx'
 import StudentSelfService from './pages/StudentSelfService.jsx'
 import GateScanner from './pages/GateScanner.jsx'
@@ -16,14 +17,19 @@ export default function App() {
     <ToastHost />
     <Routes>
       <Route path="/" element={<Navigate to="/admin" replace />} />
+      {/* Public — no auth */}
       <Route path="/register/:eventId" element={<PublicRegister />} />
       <Route path="/me/:claimToken" element={<StudentSelfService />} />
-      <Route path="/scan" element={<GateScanner />} />
-      <Route path="/admin" element={<AdminHome />} />
-      <Route path="/admin/event/:eventId" element={<AdminDashboard />} />
-      <Route path="/admin/event/:eventId/registrations" element={<AdminRegistrations />} />
-      <Route path="/admin/event/:eventId/settings" element={<AdminSettings />} />
-      <Route path="/admin/event/:eventId/export" element={<AdminExport />} />
+
+      {/* Gate staff (admins allowed too) */}
+      <Route path="/scan" element={<RequireStaff role="staff"><GateScanner /></RequireStaff>} />
+
+      {/* Admin only */}
+      <Route path="/admin" element={<RequireStaff role="admin"><AdminHome /></RequireStaff>} />
+      <Route path="/admin/event/:eventId" element={<RequireStaff role="admin"><AdminDashboard /></RequireStaff>} />
+      <Route path="/admin/event/:eventId/registrations" element={<RequireStaff role="admin"><AdminRegistrations /></RequireStaff>} />
+      <Route path="/admin/event/:eventId/settings" element={<RequireStaff role="admin"><AdminSettings /></RequireStaff>} />
+      <Route path="/admin/event/:eventId/export" element={<RequireStaff role="admin"><AdminExport /></RequireStaff>} />
       <Route path="*" element={<NotFound />} />
     </Routes>
     </>

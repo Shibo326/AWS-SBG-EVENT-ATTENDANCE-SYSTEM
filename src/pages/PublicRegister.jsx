@@ -1,19 +1,35 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Card, Button, Field, Input } from '../components/ui.jsx'
-import { getEvent, registerAttendee, eventTypeInfo } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { registerAttendee, eventTypeInfo } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { formatDuration } from '../lib/time.js'
+import { canSubmit, recordSubmit, makeChallenge, checkChallenge, retryAfterLabel } from '../lib/regGuard.js'
 import { Search, Lock, Check, Alert, MapPin, ArrowRight } from '../components/icons.jsx'
 
 export default function PublicRegister() {
-  useStore()
   const { eventId } = useParams()
-  const event = getEvent(eventId)
+  const { event, loading } = useEvent(eventId)
   const [form, setForm] = useState({ full_name: '', email: '', organization: '', year_section: '' })
   const [consent, setConsent] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  // Light CAPTCHA challenge + throttle (Module 1). Challenge regenerates on a
+  // wrong answer so a repeated guess can't be replayed.
+  const [challenge, setChallenge] = useState(() => makeChallenge())
+  const [captcha, setCaptcha] = useState('')
+
+  if (loading) {
+    return (
+      <Shell>
+        <Card className="p-8 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-brand-line border-t-brand-amber" />
+          <p className="mt-3 text-sm text-brand-muted">Loading event…</p>
+        </Card>
+      </Shell>
+    )
+  }
 
   if (!event) {
     return (
@@ -43,14 +59,33 @@ export default function PublicRegister() {
     )
   }
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!form.full_name.trim() || !form.email.trim()) return setErr('Name and email are required.')
     if (!/^\S+@\S+\.\S+$/.test(form.email)) return setErr('Enter a valid email address.')
     if (!consent) return setErr('Please agree to the privacy notice to continue.')
-    const res = registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
-    if (res.error) return setErr(res.error)
-    setDone(res)
+    // Light CAPTCHA (bot deterrent).
+    if (!checkChallenge(challenge, captcha)) {
+      setChallenge(makeChallenge()); setCaptcha('')
+      return setErr('Please answer the verification question correctly.')
+    }
+    // Per-browser throttle (client-only approximation of a per-IP limit).
+    const gate = canSubmit()
+    if (!gate.allowed) {
+      return setErr(`Too many submissions from this device. Please try again in ${retryAfterLabel(gate.retryAfterMs)}.`)
+    }
+    setSubmitting(true)
+    setErr('')
+    try {
+      const res = await registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
+      if (res.error) { setErr(res.error); return }
+      recordSubmit()
+      setDone(res)
+    } catch (_) {
+      setErr('Could not submit right now. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (done) {
@@ -94,6 +129,20 @@ export default function PublicRegister() {
           <Field label="Year & section" htmlFor="reg-yearsec" hint="e.g. BSIT 3-A">
             <Input id="reg-yearsec" value={form.year_section} onChange={(e) => setForm({ ...form, year_section: e.target.value })} placeholder="BSIT 3-A" />
           </Field>
+          <Field label="Quick check" htmlFor="reg-captcha" hint="Confirms you're human.">
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg bg-brand-surfaceAlt px-3 py-2 text-sm font-medium text-brand-ink" aria-hidden="true">{challenge.question}</span>
+              <Input
+                id="reg-captcha"
+                className="w-24"
+                inputMode="numeric"
+                value={captcha}
+                onChange={(e) => { setCaptcha(e.target.value); setErr('') }}
+                placeholder="?"
+                aria-label={challenge.question}
+              />
+            </div>
+          </Field>
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-brand-line bg-brand-surfaceAlt p-3.5">
             <input type="checkbox" checked={consent} onChange={(e) => { setConsent(e.target.checked); setErr('') }} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-amber" />
             <span className="text-sm leading-relaxed text-brand-slate">
@@ -105,7 +154,7 @@ export default function PublicRegister() {
               <Alert size={15} className="shrink-0" />{err}
             </p>
           )}
-          <Button type="submit" size="lg" className="w-full">Submit registration</Button>
+          <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit registration'}</Button>
         </form>
       </Card>
     </Shell>
@@ -117,7 +166,7 @@ function Shell({ children }) {
     <div className="min-h-screen bg-brand-ink py-8 px-4">
       <div className="mx-auto max-w-md">
         <div className="mb-5 flex items-center justify-center gap-2.5 text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink on-accent shadow-e1">A</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink shadow-e1">A</span>
           <span className="font-display font-semibold tracking-tight">AWS Student Builder Group</span>
         </div>
         {children}
@@ -130,7 +179,7 @@ function EventHeader({ meta, settings }) {
   return (
     <Card className="overflow-hidden">
       <div className="bg-brand-navy p-5 text-white">
-        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink on-accent">{eventTypeInfo(meta.event_type).label}</span>
+        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink">{eventTypeInfo(meta.event_type).label}</span>
         <h1 className="mt-2.5 font-display text-xl font-bold tracking-tight">{meta.name}</h1>
         {meta.venue && <p className="mt-1 flex items-center gap-1.5 text-sm text-white/70"><MapPin size={14} className="shrink-0" />{meta.venue}</p>}
       </div>

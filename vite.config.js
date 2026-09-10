@@ -9,12 +9,14 @@ export default defineConfig({
     host: true,   // exposes on LAN so you can open on phone: http://<laptop-ip>:8081
   },
   optimizeDeps: {
-    include: ['jsqr'],
+    include: ['jsqr', 'firebase/app', 'firebase/database', 'firebase/auth'],
   },
-  // Unit tests (scan queue, registration guard, CSV parsing). jsdom gives the
-  // pure-logic modules a real localStorage + crypto without any DOM wiring.
+  // Unit tests. jsdom gives the pure-logic modules a real localStorage + crypto,
+  // and jest-dom matchers for any component tests via the setup file.
   test: {
     environment: 'jsdom',
-    include: ['src/**/*.{test,spec}.{js,jsx}'],
+    globals: true,
+    setupFiles: ['./src/test/setup.js'],
+    include: ['src/**/*.{test,spec}.{js,jsx}', '*.{test,spec}.{js,jsx}'],
   },
 })
