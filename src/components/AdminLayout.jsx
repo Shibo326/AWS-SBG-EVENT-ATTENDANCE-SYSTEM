@@ -1,7 +1,9 @@
 import { Link, useParams, useLocation } from 'react-router-dom'
-import { getEvent, eventTypeInfo } from '../lib/store.js'
-import { useStore, useTheme } from '../lib/hooks.js'
-import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon } from './icons.jsx'
+import { eventTypeInfo } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
+import { useTheme } from '../lib/hooks.js'
+import { useAuth } from '../lib/auth.jsx'
+import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon, LogOut, Users } from './icons.jsx'
 
 const NAV = [
   { key: '', label: 'Dashboard', icon: Grid },
@@ -16,30 +18,42 @@ const NAV_STANDALONE = [
 ]
 
 export default function AdminLayout({ children }) {
-  useStore()
-  const [isDark, toggleTheme] = useTheme()
   const { eventId } = useParams()
   const location = useLocation()
-  const event = eventId ? getEvent(eventId) : null
+  const { event } = useEvent(eventId)
   const meta = event?.meta
+  const [isDark, toggleTheme] = useTheme()
+  const { staff, user, signOut } = useAuth()
+  const who = staff?.display_name || user?.email || 'Signed in'
 
   const currentSeg = location.pathname.split('/').slice(4).join('/') || ''
 
   return (
-    <div className="min-h-screen bg-brand-surface dark:bg-brand-darkSurface">
+    <div className="min-h-screen bg-brand-surface">
       {/* Top bar — warm ink, brand mark left, "all events" escape hatch right */}
       <header className="sticky top-0 z-30 border-b border-black/10 bg-brand-ink text-white shadow-e2">
         <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4 sm:px-6">
           <Link to="/admin" className="flex items-center gap-2.5 font-display font-bold">
-            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber text-brand-ink on-accent shadow-e1">A</span>
+            <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber text-brand-ink shadow-e1">A</span>
             <span className="hidden tracking-tight sm:inline">SBG Attendance</span>
           </Link>
 
           <div className="flex items-center gap-1">
+            {staff?.role === 'admin' && (
+              <Link
+                to="/admin/staff"
+                aria-current={location.pathname === '/admin/staff' ? 'page' : undefined}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors hover:bg-white/10 hover:text-white ${location.pathname === '/admin/staff' ? 'bg-white/10 text-white' : 'text-white/70'}`}
+                title="Manage staff accounts"
+              >
+                <Users size={16} /><span className="hidden sm:inline">Staff</span>
+              </Link>
+            )}
             <button
+              type="button"
               onClick={toggleTheme}
-              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
               className="grid h-9 w-9 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
+              aria-label={isDark ? 'Switch to light mode' : 'Switch to dark mode'}
             >
               {isDark ? <Sun size={18} /> : <Moon size={18} />}
             </button>
@@ -51,6 +65,19 @@ export default function AdminLayout({ children }) {
                 <ArrowLeft size={16} />All events
               </Link>
             )}
+            {/* Who's signed in + sign out (roles live in /staff, §9.2). */}
+            <span className="hidden max-w-[160px] truncate rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 sm:inline" title={who}>
+              {who}{staff?.role ? ` · ${staff.role === 'admin' ? 'Admin' : 'Gate staff'}` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={signOut}
+              className="grid h-9 w-9 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </header>
@@ -86,8 +113,8 @@ export default function AdminLayout({ children }) {
                     aria-current={active ? 'page' : undefined}
                     className={`flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium transition-colors ${
                       active
-                        ? 'bg-white text-brand-ink shadow-e1 ring-1 ring-brand-line dark:bg-brand-darkCard dark:text-brand-surface dark:ring-brand-darkLine'
-                        : 'text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink dark:hover:bg-brand-navy dark:hover:text-brand-surface'
+                        ? 'bg-white text-brand-ink shadow-e1 ring-1 ring-brand-line'
+                        : 'text-brand-muted hover:bg-brand-surfaceAlt hover:text-brand-ink'
                     }`}
                   >
                     <Icon size={18} className="shrink-0" />
@@ -107,7 +134,7 @@ export default function AdminLayout({ children }) {
                     href={item.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt hover:text-brand-ink dark:hover:bg-brand-navy dark:hover:text-brand-surface"
+                    className="flex items-center gap-3 rounded-xl px-3.5 py-2.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt hover:text-brand-ink"
                   >
                     <Icon size={18} className="shrink-0" />
                     {item.label}
@@ -132,8 +159,8 @@ export default function AdminLayout({ children }) {
                     aria-current={active ? 'page' : undefined}
                     className={`shrink-0 rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
                       active
-                        ? 'bg-brand-ink text-white shadow-e1 dark:bg-brand-amber dark:text-brand-ink'
-                        : 'border border-brand-line bg-white text-brand-muted dark:bg-brand-darkCard dark:border-brand-darkLine'
+                        ? 'bg-brand-ink text-white shadow-e1'
+                        : 'border border-brand-line bg-white text-brand-muted'
                     }`}
                   >
                     {item.label}
@@ -149,7 +176,7 @@ export default function AdminLayout({ children }) {
                     href={item.href}
                     target="_blank"
                     rel="noopener noreferrer"
-                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-line bg-white px-3.5 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt dark:bg-brand-darkCard dark:border-brand-darkLine"
+                    className="flex shrink-0 items-center gap-1.5 rounded-full border border-brand-line bg-white px-3.5 py-1.5 text-sm font-medium text-brand-muted transition-colors hover:bg-brand-surfaceAlt"
                   >
                     <Icon size={15} />{item.label}
                   </a>
@@ -168,7 +195,7 @@ export function PageHeader({ title, subtitle, actions }) {
   return (
     <div className="mb-6 flex flex-wrap items-end justify-between gap-3">
       <div className="min-w-0">
-        <h1 className="font-display text-2xl font-bold tracking-tight text-brand-ink dark:text-brand-surface">{title}</h1>
+        <h1 className="font-display text-2xl font-bold tracking-tight text-brand-ink">{title}</h1>
         {subtitle && <p className="mt-1 text-sm leading-relaxed text-brand-muted">{subtitle}</p>}
       </div>
       {actions && <div className="flex flex-wrap gap-2">{actions}</div>}

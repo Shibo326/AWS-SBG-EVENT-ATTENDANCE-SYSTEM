@@ -1,21 +1,38 @@
 import { useState } from 'react'
 import { useParams, Link } from 'react-router-dom'
 import { Card, Button, Field, Input } from '../components/ui.jsx'
-import { getEvent, registerAttendee, eventTypeInfo } from '../lib/store.js'
-import { useStore } from '../lib/hooks.js'
+import { registerAttendee, eventTypeInfo } from '../lib/db.js'
+import { useEvent } from '../lib/dbHooks.js'
 import { formatDuration } from '../lib/time.js'
+import { canSubmit, recordSubmit, makeChallenge, checkChallenge, retryAfterLabel } from '../lib/regGuard.js'
 import { Search, Lock, Check, Alert, MapPin, ArrowRight } from '../components/icons.jsx'
 
 export default function PublicRegister() {
-  useStore()
   const { eventId } = useParams()
-  const event = getEvent(eventId)
+  const { event, loading } = useEvent(eventId)
   const [form, setForm] = useState({ full_name: '', email: '', organization: '', year_section: '' })
   const [consent, setConsent] = useState(false)
   const [err, setErr] = useState('')
   const [done, setDone] = useState(null)
+  const [submitting, setSubmitting] = useState(false)
+  // Light CAPTCHA challenge + throttle (Module 1). Challenge regenerates on a
+  // wrong answer so a repeated guess can't be replayed.
+  const [challenge, setChallenge] = useState(() => makeChallenge())
+  const [captcha, setCaptcha] = useState('')
+  const [showPrivacy, setShowPrivacy] = useState(false)
 
-  if (!event) {
+  if (loading) {
+    return (
+      <Shell>
+        <Card className="p-8 text-center">
+          <div className="mx-auto h-8 w-8 animate-spin rounded-full border-2 border-brand-line border-t-brand-amber" />
+          <p className="mt-3 text-sm text-brand-muted">Loading event…</p>
+        </Card>
+      </Shell>
+    )
+  }
+
+  if (!event || !event.meta || !event.settings) {
     return (
       <Shell>
         <Card className="p-8 text-center">
@@ -43,14 +60,33 @@ export default function PublicRegister() {
     )
   }
 
-  const submit = (e) => {
+  const submit = async (e) => {
     e.preventDefault()
     if (!form.full_name.trim() || !form.email.trim()) return setErr('Name and email are required.')
     if (!/^\S+@\S+\.\S+$/.test(form.email)) return setErr('Enter a valid email address.')
     if (!consent) return setErr('Please agree to the privacy notice to continue.')
-    const res = registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
-    if (res.error) return setErr(res.error)
-    setDone(res)
+    // Light CAPTCHA (bot deterrent).
+    if (!checkChallenge(challenge, captcha)) {
+      setChallenge(makeChallenge()); setCaptcha('')
+      return setErr('Please answer the verification question correctly.')
+    }
+    // Per-browser throttle (client-only approximation of a per-IP limit).
+    const gate = canSubmit()
+    if (!gate.allowed) {
+      return setErr(`Too many submissions from this device. Please try again in ${retryAfterLabel(gate.retryAfterMs)}.`)
+    }
+    setSubmitting(true)
+    setErr('')
+    try {
+      const res = await registerAttendee(eventId, { ...form, full_name: form.full_name.trim(), email: form.email.trim() })
+      if (res.error) { setErr(res.error); return }
+      recordSubmit()
+      setDone(res)
+    } catch (_) {
+      setErr('Could not submit right now. Please try again.')
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   if (done) {
@@ -94,10 +130,31 @@ export default function PublicRegister() {
           <Field label="Year & section" htmlFor="reg-yearsec" hint="e.g. BSIT 3-A">
             <Input id="reg-yearsec" value={form.year_section} onChange={(e) => setForm({ ...form, year_section: e.target.value })} placeholder="BSIT 3-A" />
           </Field>
+          <Field label="Quick check" htmlFor="reg-captcha" hint="Confirms you're human.">
+            <div className="flex items-center gap-3">
+              <span className="rounded-lg bg-brand-surfaceAlt px-3 py-2 text-sm font-medium text-brand-ink" aria-hidden="true">{challenge.question}</span>
+              <Input
+                id="reg-captcha"
+                className="w-24"
+                inputMode="numeric"
+                value={captcha}
+                onChange={(e) => { setCaptcha(e.target.value); setErr('') }}
+                placeholder="?"
+                aria-label={challenge.question}
+              />
+            </div>
+          </Field>
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-brand-line bg-brand-surfaceAlt p-3.5">
             <input type="checkbox" checked={consent} onChange={(e) => { setConsent(e.target.checked); setErr('') }} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-amber" />
             <span className="text-sm leading-relaxed text-brand-slate">
-              I agree that my name, email, and organization will be used for attendance tracking and certificate eligibility for this event, per the Data Privacy Act (RA 10173).
+              I agree that my name, email, and organization will be used for attendance tracking and certificate eligibility for this event, per the Data Privacy Act (RA 10173).{' '}
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); setShowPrivacy(true) }}
+                className="font-medium text-brand-amberDark underline decoration-brand-amber decoration-2 underline-offset-2 hover:text-brand-ink"
+              >
+                Read the privacy notice
+              </button>.
             </span>
           </label>
           {err && (
@@ -105,9 +162,10 @@ export default function PublicRegister() {
               <Alert size={15} className="shrink-0" />{err}
             </p>
           )}
-          <Button type="submit" size="lg" className="w-full">Submit registration</Button>
+          <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit registration'}</Button>
         </form>
       </Card>
+      {showPrivacy && <PrivacyNotice meta={meta} onClose={() => setShowPrivacy(false)} />}
     </Shell>
   )
 }
@@ -117,7 +175,7 @@ function Shell({ children }) {
     <div className="min-h-screen bg-brand-ink py-8 px-4">
       <div className="mx-auto max-w-md">
         <div className="mb-5 flex items-center justify-center gap-2.5 text-white">
-          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink on-accent shadow-e1">A</span>
+          <span className="grid h-8 w-8 place-items-center rounded-lg bg-brand-amber font-display font-bold text-brand-ink shadow-e1">A</span>
           <span className="font-display font-semibold tracking-tight">AWS Student Builder Group</span>
         </div>
         {children}
@@ -130,7 +188,7 @@ function EventHeader({ meta, settings }) {
   return (
     <Card className="overflow-hidden">
       <div className="bg-brand-navy p-5 text-white">
-        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink on-accent">{eventTypeInfo(meta.event_type).label}</span>
+        <span className="inline-flex rounded-full bg-brand-amber px-2.5 py-0.5 text-xs font-semibold text-brand-ink">{eventTypeInfo(meta.event_type).label}</span>
         <h1 className="mt-2.5 font-display text-xl font-bold tracking-tight">{meta.name}</h1>
         {meta.venue && <p className="mt-1 flex items-center gap-1.5 text-sm text-white/70"><MapPin size={14} className="shrink-0" />{meta.venue}</p>}
       </div>
@@ -141,5 +199,47 @@ function EventHeader({ meta, settings }) {
         </span>
       </div>
     </Card>
+  )
+}
+
+// Privacy notice (PROJECT_PLAN §10 / Module 1). States what is collected, why,
+// how long it is kept, and who can access it — the transparency the Data
+// Privacy Act (RA 10173) requires, shown before the attendee consents.
+function PrivacyNotice({ meta, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-ink/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 animate-rise">
+        <div onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted"><Lock size={22} /></div>
+          <h2 className="mt-3 text-center font-display text-lg font-bold text-brand-ink">Privacy notice</h2>
+          <p className="mt-1 text-center text-sm text-brand-muted">How your information is handled for {meta?.name || 'this event'}.</p>
+
+          <dl className="mt-5 space-y-4 text-sm leading-relaxed text-brand-slate">
+            <div>
+              <dt className="font-semibold text-brand-ink">What we collect</dt>
+              <dd>Your full name, email address, and school/organization. At the gate we record the times you scan in and out.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Why we collect it</dt>
+              <dd>To track your attendance time and decide certificate eligibility for this event only. It is not used for recruitment or marketing without your separate consent.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Who can access it</dt>
+              <dd>Only the AWS SBG organizing admins, and you — through your personal self-service link. Gate volunteers can scan you in and out but cannot see the attendee list.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">How long we keep it</dt>
+              <dd>Your personal details are deleted after the event's reporting period (about 90 days). Anonymous totals may be kept without identifying you.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Your rights</dt>
+              <dd>You may view your own record any time via your self-service link, and request a correction from the organizers. This is handled under the Data Privacy Act of 2012 (RA 10173).</dd>
+            </div>
+          </dl>
+
+          <Button className="mt-6 w-full" onClick={onClose}>Got it</Button>
+        </div>
+      </Card>
+    </div>
   )
 }
