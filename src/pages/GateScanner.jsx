@@ -8,7 +8,7 @@ import { useWakeLock } from '../lib/hooks.js'
 import { useAuth } from '../lib/auth.jsx'
 import { playForScan } from '../lib/sound.js'
 import { formatDuration, formatTime } from '../lib/time.js'
-import { ArrowDown, ArrowUp, X, Check, Camera, CameraOff, Dice, Search, ArrowRight } from '../components/icons.jsx'
+import { ArrowDown, ArrowUp, X, Check, Camera, CameraOff, Dice, Search, ArrowRight, LogOut } from '../components/icons.jsx'
 
 // Module 4 gate scanner — camera decode via html5-qrcode (PROJECT_PLAN §5.1).
 // The library owns the camera stream + decode loop and renders into a div; we
@@ -27,7 +27,7 @@ const FEEDBACK = {
 export default function GateScanner() {
   const [searchParams, setSearchParams] = useSearchParams()
   const { events: allEvents } = useEvents()
-  const { user } = useAuth()
+  const { user, signOut } = useAuth()
 
   // Active events only — the only ones a gate scanner should operate on.
   // events are full snapshots {id, meta, settings, attendees, ...}.
@@ -332,6 +332,15 @@ export default function GateScanner() {
             <span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'bg-brand-teal animate-pulse-ring' : 'bg-white/30'}`} aria-hidden="true" />
             {scanning ? 'Scanning' : 'Idle'}
           </span>
+          <button
+            type="button"
+            onClick={signOut}
+            className="grid h-8 w-8 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
+            aria-label="Sign out"
+            title="Sign out"
+          >
+            <LogOut size={16} />
+          </button>
         </div>
       </header>
 

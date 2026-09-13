@@ -38,10 +38,18 @@ function readEnv() {
   }
 }
 
-const [uid, displayName, email, role = 'admin'] = process.argv.slice(2)
+// AWS SBG defaults — so seeding the club's admin is a one-liner:
+//   node scripts/seed-admin.mjs <UID>
+// Override name/email/role by passing them explicitly.
+const DEFAULT_NAME = 'AWS SBG Admin'
+const DEFAULT_EMAIL = 'admin@awssbg.dev'
 
-if (!uid || !displayName || !email) {
-  console.error('Usage: node scripts/seed-admin.mjs <UID> "<Display Name>" <email> [role]')
+const [uid, displayName = DEFAULT_NAME, email = DEFAULT_EMAIL, role = 'admin'] = process.argv.slice(2)
+
+if (!uid) {
+  console.error('Usage: node scripts/seed-admin.mjs <UID> ["<Display Name>"] [email] [role]')
+  console.error('  <UID> is the Firebase Auth User UID (Authentication → Users → copy UID).')
+  console.error(`  Defaults: name="${DEFAULT_NAME}", email="${DEFAULT_EMAIL}", role="admin".`)
   process.exit(1)
 }
 if (role !== 'admin' && role !== 'gate_staff') {

@@ -2,7 +2,8 @@ import { Link, useParams, useLocation } from 'react-router-dom'
 import { eventTypeInfo } from '../lib/db.js'
 import { useEvent } from '../lib/dbHooks.js'
 import { useTheme } from '../lib/hooks.js'
-import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon } from './icons.jsx'
+import { useAuth } from '../lib/auth.jsx'
+import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon, LogOut } from './icons.jsx'
 
 const NAV = [
   { key: '', label: 'Dashboard', icon: Grid },
@@ -22,6 +23,8 @@ export default function AdminLayout({ children }) {
   const { event } = useEvent(eventId)
   const meta = event?.meta
   const [isDark, toggleTheme] = useTheme()
+  const { staff, user, signOut } = useAuth()
+  const who = staff?.display_name || user?.email || 'Signed in'
 
   const currentSeg = location.pathname.split('/').slice(4).join('/') || ''
 
@@ -52,6 +55,19 @@ export default function AdminLayout({ children }) {
                 <ArrowLeft size={16} />All events
               </Link>
             )}
+            {/* Who's signed in + sign out (roles live in /staff, §9.2). */}
+            <span className="hidden max-w-[160px] truncate rounded-full bg-white/10 px-3 py-1 text-xs text-white/80 sm:inline" title={who}>
+              {who}{staff?.role ? ` · ${staff.role === 'admin' ? 'Admin' : 'Gate staff'}` : ''}
+            </span>
+            <button
+              type="button"
+              onClick={signOut}
+              className="grid h-9 w-9 place-items-center rounded-full text-white/70 transition-colors hover:bg-white/10 hover:text-white focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-brand-amber"
+              aria-label="Sign out"
+              title="Sign out"
+            >
+              <LogOut size={18} />
+            </button>
           </div>
         </div>
       </header>
