@@ -103,7 +103,7 @@
           ".read": "auth != null && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
 
           "$correctionId": {
-            ".write": "auth != null && !data.exists() && newData.exists() && root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+            ".write": "auth != null && !data.exists() && newData.exists() && root.child('staff').child(auth.uid).child('active').val() === true && (root.child('staff').child(auth.uid).child('role').val() === 'admin' || (root.child('staff').child(auth.uid).child('role').val() === 'gate_staff' && newData.child('type').val() === 'insert_missing_scan'))",
 
             ".validate": "newData.hasChildren(['attendee_id', 'type', 'reason', 'corrected_by', 'corrected_at'])",
 

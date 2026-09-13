@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import { Html5Qrcode } from 'html5-qrcode'
-import { processScan, anyApprovedTokenFrom, listAttendeesFrom } from '../lib/db.js'
+import { processScan, syncOfflineScan, anyApprovedTokenFrom, listAttendeesFrom } from '../lib/db.js'
+import { enqueueScan, flushQueue, queueLength, isOnline } from '../lib/scanQueue.js'
 import { useEvents } from '../lib/dbHooks.js'
 import { useAuth } from '../lib/auth.jsx'
 import { formatDuration, formatTime } from '../lib/time.js'
@@ -18,6 +19,7 @@ const FEEDBACK = {
   in:       { bg: 'bg-brand-green',     label: 'CHECKED IN',  Icon: ArrowDown },
   out:      { bg: 'bg-brand-amberDark', label: 'CHECKED OUT', Icon: ArrowUp },
   rejected: { bg: 'bg-brand-red',       label: 'REJECTED',    Icon: X },
+  queued:   { bg: 'bg-brand-navy',      label: 'SAVED OFFLINE', Icon: Check },
 }
 
 export default function GateScanner() {
@@ -62,9 +64,33 @@ export default function GateScanner() {
   const [cameraActive, setCameraActive] = useState(false)
   const [cameraError,  setCameraError]  = useState(null)
   const [scanning, setScanning] = useState(false) // true while the decoder is live
+  const [online, setOnline] = useState(isOnline())
+  const [pending, setPending] = useState(queueLength()) // buffered offline scans
 
   const scannerRef  = useRef(null)   // Html5Qrcode instance
   const cooldownRef = useRef(false)  // brief per-decode pause so flash renders
+
+  // ── offline queue: flush on reconnect + periodically (R3 / criterion 13) ─────
+  const flush = useCallback(async () => {
+    if (!isOnline()) return
+    const { remaining } = await flushQueue(syncOfflineScan)
+    setPending(remaining)
+  }, [])
+
+  useEffect(() => {
+    const goOnline = () => { setOnline(true); flush() }
+    const goOffline = () => setOnline(false)
+    window.addEventListener('online', goOnline)
+    window.addEventListener('offline', goOffline)
+    // Also poll: the browser's online event can miss a captive-portal recovery.
+    const id = setInterval(() => { setOnline(isOnline()); flush() }, 15000)
+    flush() // attempt a flush on mount in case scans were left buffered
+    return () => {
+      window.removeEventListener('online', goOnline)
+      window.removeEventListener('offline', goOffline)
+      clearInterval(id)
+    }
+  }, [flush])
 
   // ── flash auto-reset ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -81,10 +107,32 @@ export default function GateScanner() {
   const doScan = useCallback(async (token) => {
     if (cooldownRef.current) return   // flash is showing, swallow extra decodes
     cooldownRef.current = true
-    const r = await processScan(token, { gateId: 'gate-1', scannedBy: user?.uid || 'staff' })
-    setResult(r)
-    const kind = r.outcome === 'accepted' ? r.direction : 'rejected'
-    setFlash({ kind, r })
+    const scannedBy = user?.uid || 'staff'
+
+    // Offline: buffer the scan and confirm immediately — the gate keeps moving.
+    // It syncs (preserving its timestamp) on reconnect (R3 / criterion 13).
+    if (!isOnline()) {
+      enqueueScan({ token, gateId: 'gate-1', scannedBy })
+      setPending(queueLength())
+      const r = { outcome: 'queued', message: 'No connection — saved and will sync when back online.' }
+      setResult(r)
+      setFlash({ kind: 'queued', r })
+      return
+    }
+
+    try {
+      const r = await processScan(token, { gateId: 'gate-1', scannedBy })
+      setResult(r)
+      const kind = r.outcome === 'accepted' ? r.direction : 'rejected'
+      setFlash({ kind, r })
+    } catch (_) {
+      // Network dropped mid-write — buffer it rather than lose it.
+      enqueueScan({ token, gateId: 'gate-1', scannedBy })
+      setPending(queueLength())
+      const r = { outcome: 'queued', message: 'Connection dropped — saved and will sync when back online.' }
+      setResult(r)
+      setFlash({ kind: 'queued', r })
+    }
   }, [user?.uid])
 
   // ── camera start (html5-qrcode owns the stream + decode loop) ────────────────
@@ -258,10 +306,21 @@ export default function GateScanner() {
           <span className="grid h-7 w-7 place-items-center rounded-lg bg-brand-amber text-brand-ink">A</span>
           Gate Scanner
         </Link>
-        <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs">
-          <span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'bg-brand-teal animate-pulse-ring' : 'bg-white/30'}`} aria-hidden="true" />
-          {scanning ? 'Scanning' : 'Idle'}
-        </span>
+        <div className="flex items-center gap-2">
+          {/* Online / offline + pending-sync indicator (R3 / criterion 13) */}
+          <span
+            className={`flex items-center gap-1.5 rounded-full px-3 py-1 text-xs ${online ? 'bg-white/10' : 'bg-brand-red/30'}`}
+            title={online ? 'Online' : 'Offline — scans are being saved and will sync when the connection returns'}
+          >
+            <span className={`h-1.5 w-1.5 rounded-full ${online ? 'bg-brand-teal' : 'bg-brand-red animate-pulse-ring'}`} aria-hidden="true" />
+            {online ? 'Online' : 'Offline'}
+            {pending > 0 && <span className="ml-1 rounded-full bg-white/20 px-1.5 tabular">{pending} to sync</span>}
+          </span>
+          <span className="flex items-center gap-1.5 rounded-full bg-white/10 px-3 py-1 text-xs">
+            <span className={`h-1.5 w-1.5 rounded-full ${scanning ? 'bg-brand-teal animate-pulse-ring' : 'bg-white/30'}`} aria-hidden="true" />
+            {scanning ? 'Scanning' : 'Idle'}
+          </span>
+        </div>
       </header>
 
       <div className="mx-auto max-w-md px-4 py-6">

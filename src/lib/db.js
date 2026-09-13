@@ -584,3 +584,42 @@ export function anyApprovedTokenFrom(ev) {
   if (!approved.length) return null
   return approved[Math.floor(Math.random() * approved.length)].qr_token
 }
+
+/**
+ * Persist ONE buffered offline scan (from scanQueue) preserving its original
+ * client timestamp (R3 / criterion 13). Because the security rules force a
+ * server timestamp on normal scan_events, an offline scan — which happened in
+ * the past — is written instead as an `insert_missing_scan` CORRECTION whose
+ * payload carries the captured client time. The time engine already applies
+ * these corrections, so the attendee's total reflects the real moment they
+ * scanned, not the sync moment. Direction is derived from state at the captured
+ * time. The clientId is embedded in the reason so the write is auditable and
+ * dedup-traceable. Throws on failure so the queue keeps the item for retry.
+ *
+ * @param {{clientId, token, gateId, scannedBy, clientTs}} item
+ */
+export async function syncOfflineScan(item) {
+  const ref_ = await resolveToken(item.token)
+  if (!ref_) {
+    // Token matched nothing — nothing to file per-event. Treat as handled so it
+    // doesn't wedge the queue forever (an invalid QR offline is unrecoverable).
+    return { skipped: true }
+  }
+  const { eventId, attendeeId } = ref_
+  const ev = await fetchEvent(eventId)
+  if (!ev?.attendees?.[attendeeId]) return { skipped: true }
+
+  // Derive direction from the attendee's state AS OF the captured time, so a
+  // buffered in/out sequence reconstructs correctly regardless of sync order.
+  const stateThen = attendeeStatsFrom(ev, attendeeId, item.clientTs)
+  const direction = stateThen.isInside ? 'out' : 'in'
+
+  const res = await addCorrection(eventId, attendeeId, {
+    type: 'insert_missing_scan',
+    payload: { direction, timestamp: item.clientTs },
+    reason: `Offline scan synced on reconnect (gate ${item.gateId}, ref ${item.clientId})`,
+    corrected_by: item.scannedBy || 'scanner',
+  })
+  if (res.error) throw new Error(res.error)
+  return { eventId, attendeeId, direction }
+}

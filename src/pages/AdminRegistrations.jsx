@@ -6,8 +6,9 @@ import { listAttendeesFrom, approveAttendee, rejectAttendee, registerAttendee } 
 import { useEvent } from '../lib/dbHooks.js'
 import { useAuth } from '../lib/auth.jsx'
 import { sendQrTicket } from '../lib/email.js'
+import { parseCSV } from '../lib/csv.js'
 import { toast } from '../components/Toast.jsx'
-import { Search, Check, Download, Link2 } from '../components/icons.jsx'
+import { Search, Check, Download, Link2, Alert } from '../components/icons.jsx'
 
 const TABS = [
   { key: 'pending', label: 'Pending' },
@@ -39,6 +40,7 @@ export default function AdminRegistrations() {
   const uid = user?.uid
   const [tab, setTab] = useState('pending')
   const [adding, setAdding] = useState(false)
+  const [importing, setImporting] = useState(false)
   const [qrFor, setQrFor] = useState(null)
   const [query, setQuery] = useState('')
 
@@ -69,10 +71,16 @@ export default function AdminRegistrations() {
       <PageHeader
         title="Registrations"
         subtitle="Approve attendees to issue their QR. Nothing is issued until you approve."
-        actions={<Button onClick={() => setAdding(true)}>+ Add attendee</Button>}
+        actions={
+          <>
+            <Button variant="outline" onClick={() => setImporting(true)}>Import CSV</Button>
+            <Button onClick={() => setAdding(true)}>+ Add attendee</Button>
+          </>
+        }
       />
 
       {adding && <ManualAdd eventId={eventId} eventName={eventName} uid={uid} onClose={() => setAdding(false)} onIssued={(a) => setQrFor(a)} />}
+      {importing && <BulkImport eventId={eventId} existing={all} onClose={() => setImporting(false)} />}
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex gap-2">
@@ -281,6 +289,148 @@ function QRModal({ attendee, onClose }) {
           </div>
 
           <Button className="mt-4 w-full" variant="ghost" onClick={onClose}>Close</Button>
+        </div>
+      </Card>
+    </div>
+  )
+}
+
+// Bulk CSV import (Module 2). Upload a roster, preview it with per-row
+// validation (email format, in-file duplicates, and rows that already exist for
+// this event), then commit — valid rows are created as PENDING attendees. QR
+// issuance still requires approval, exactly like the public form; import only
+// populates the queue faster.
+function BulkImport({ eventId, existing, onClose }) {
+  const [rows, setRows] = useState(null)   // parsed + validated preview rows
+  const [fileName, setFileName] = useState('')
+  const [committing, setCommitting] = useState(false)
+  const [done, setDone] = useState(null)
+
+  const existingEmails = new Set((existing || []).map((a) => (a.email || '').toLowerCase()))
+  const emailRe = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
+  const onFile = async (e) => {
+    const file = e.target.files?.[0]
+    if (!file) return
+    setFileName(file.name)
+    const text = await file.text()
+    const parsed = parseCSV(text)
+    const seen = new Set()
+    const validated = parsed.map((r, i) => {
+      const full_name = (r.full_name || '').trim()
+      const email = (r.email || '').trim().toLowerCase()
+      const errors = []
+      if (!full_name) errors.push('missing name')
+      if (!email) errors.push('missing email')
+      else if (!emailRe.test(email)) errors.push('invalid email')
+      else if (existingEmails.has(email)) errors.push('already registered')
+      else if (seen.has(email)) errors.push('duplicate in file')
+      if (email) seen.add(email)
+      return {
+        line: i + 2, // +1 for header, +1 for 1-based
+        full_name,
+        email,
+        organization: (r.organization || '').trim(),
+        year_section: (r.year_section || '').trim(),
+        errors,
+        valid: errors.length === 0,
+      }
+    })
+    setRows(validated)
+  }
+
+  const validRows = (rows || []).filter((r) => r.valid)
+
+  const commit = async () => {
+    setCommitting(true)
+    let ok = 0
+    for (const r of validRows) {
+      const res = await registerAttendee(eventId, {
+        full_name: r.full_name, email: r.email,
+        organization: r.organization, year_section: r.year_section,
+      })
+      if (!res.error) ok++
+    }
+    setCommitting(false)
+    setDone(ok)
+    toast(`Imported ${ok} attendee${ok !== 1 ? 's' : ''} as pending`, 'success')
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-ink/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <Card className="max-h-[90vh] w-full max-w-2xl overflow-y-auto p-6 animate-rise" >
+        <div onClick={(e) => e.stopPropagation()}>
+          <h3 className="font-display text-lg font-semibold text-brand-ink">Bulk import attendees</h3>
+          <p className="mt-1 text-sm text-brand-muted">
+            Upload a CSV with columns <span className="font-mono text-xs">name, email, organization, year_section</span>.
+            Rows are validated before anything is saved. Valid rows are created as <strong>pending</strong> — approve them to issue QRs.
+          </p>
+
+          {done != null ? (
+            <div className="mt-6 rounded-xl border border-brand-green/30 bg-brand-greenSoft p-4 text-center">
+              <div className="mx-auto grid h-12 w-12 place-items-center rounded-full bg-white text-brand-green"><Check size={24} /></div>
+              <p className="mt-2 font-medium text-brand-ink">Imported {done} attendee{done !== 1 ? 's' : ''} as pending.</p>
+              <Button className="mt-4" onClick={onClose}>Done</Button>
+            </div>
+          ) : (
+            <>
+              <div className="mt-4">
+                <label className="inline-flex cursor-pointer items-center gap-2 rounded-xl border border-brand-line bg-brand-surfaceAlt px-4 py-2.5 text-sm font-medium text-brand-ink hover:bg-white">
+                  <input type="file" accept=".csv,text/csv" className="hidden" onChange={onFile} />
+                  Choose CSV file
+                </label>
+                {fileName && <span className="ml-3 text-sm text-brand-muted">{fileName}</span>}
+              </div>
+
+              {rows && (
+                <>
+                  <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
+                    <Badge tone="green">{validRows.length} valid</Badge>
+                    {rows.length - validRows.length > 0 && <Badge tone="red">{rows.length - validRows.length} skipped</Badge>}
+                    <span className="text-brand-muted">{rows.length} row{rows.length !== 1 ? 's' : ''} total</span>
+                  </div>
+
+                  <div className="mt-3 max-h-[45vh] overflow-y-auto rounded-xl border border-brand-line">
+                    <table className="w-full text-left text-sm">
+                      <thead className="sticky top-0 bg-brand-surfaceAlt text-xs uppercase tracking-wide text-brand-muted">
+                        <tr>
+                          <th className="px-3 py-2">Line</th>
+                          <th className="px-3 py-2">Name</th>
+                          <th className="px-3 py-2">Email</th>
+                          <th className="px-3 py-2">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-brand-line">
+                        {rows.map((r) => (
+                          <tr key={r.line} className={r.valid ? '' : 'bg-brand-redSoft/40'}>
+                            <td className="px-3 py-2 tabular text-brand-muted">{r.line}</td>
+                            <td className="px-3 py-2 text-brand-ink">{r.full_name || <span className="text-brand-muted">—</span>}</td>
+                            <td className="px-3 py-2 text-brand-ink">{r.email || <span className="text-brand-muted">—</span>}</td>
+                            <td className="px-3 py-2">
+                              {r.valid
+                                ? <span className="inline-flex items-center gap-1 text-brand-green"><Check size={14} />OK</span>
+                                : <span className="inline-flex items-center gap-1 text-brand-red"><Alert size={14} />{r.errors.join(', ')}</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+
+                  {rows.length - validRows.length > 0 && (
+                    <p className="mt-2 text-xs text-brand-muted">Rows with errors are skipped. Fix them in the CSV and re-upload to include them.</p>
+                  )}
+                </>
+              )}
+
+              <div className="mt-5 flex gap-2">
+                <Button onClick={commit} disabled={!rows || validRows.length === 0 || committing}>
+                  {committing ? 'Importing…' : `Import ${validRows.length} valid`}
+                </Button>
+                <Button variant="ghost" onClick={onClose}>Cancel</Button>
+              </div>
+            </>
+          )}
         </div>
       </Card>
     </div>
