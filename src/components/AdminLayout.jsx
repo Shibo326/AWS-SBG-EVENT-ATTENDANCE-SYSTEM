@@ -3,7 +3,7 @@ import { eventTypeInfo } from '../lib/db.js'
 import { useEvent } from '../lib/dbHooks.js'
 import { useTheme } from '../lib/hooks.js'
 import { useAuth } from '../lib/auth.jsx'
-import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon, LogOut } from './icons.jsx'
+import { Grid, FileText, Settings, GradCap, Camera, ArrowLeft, ArrowUpRight, Sun, Moon, LogOut, Users } from './icons.jsx'
 
 const NAV = [
   { key: '', label: 'Dashboard', icon: Grid },
@@ -39,6 +39,16 @@ export default function AdminLayout({ children }) {
           </Link>
 
           <div className="flex items-center gap-1">
+            {staff?.role === 'admin' && (
+              <Link
+                to="/admin/staff"
+                aria-current={location.pathname === '/admin/staff' ? 'page' : undefined}
+                className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm transition-colors hover:bg-white/10 hover:text-white ${location.pathname === '/admin/staff' ? 'bg-white/10 text-white' : 'text-white/70'}`}
+                title="Manage staff accounts"
+              >
+                <Users size={16} /><span className="hidden sm:inline">Staff</span>
+              </Link>
+            )}
             <button
               type="button"
               onClick={toggleTheme}

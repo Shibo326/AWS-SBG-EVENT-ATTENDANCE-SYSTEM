@@ -19,6 +19,7 @@ export default function PublicRegister() {
   // wrong answer so a repeated guess can't be replayed.
   const [challenge, setChallenge] = useState(() => makeChallenge())
   const [captcha, setCaptcha] = useState('')
+  const [showPrivacy, setShowPrivacy] = useState(false)
 
   if (loading) {
     return (
@@ -146,7 +147,14 @@ export default function PublicRegister() {
           <label className="flex cursor-pointer items-start gap-3 rounded-xl border border-brand-line bg-brand-surfaceAlt p-3.5">
             <input type="checkbox" checked={consent} onChange={(e) => { setConsent(e.target.checked); setErr('') }} className="mt-0.5 h-5 w-5 shrink-0 accent-brand-amber" />
             <span className="text-sm leading-relaxed text-brand-slate">
-              I agree that my name, email, and organization will be used for attendance tracking and certificate eligibility for this event, per the Data Privacy Act (RA 10173).
+              I agree that my name, email, and organization will be used for attendance tracking and certificate eligibility for this event, per the Data Privacy Act (RA 10173).{' '}
+              <button
+                type="button"
+                onClick={(e) => { e.preventDefault(); setShowPrivacy(true) }}
+                className="font-medium text-brand-amberDark underline decoration-brand-amber decoration-2 underline-offset-2 hover:text-brand-ink"
+              >
+                Read the privacy notice
+              </button>.
             </span>
           </label>
           {err && (
@@ -157,6 +165,7 @@ export default function PublicRegister() {
           <Button type="submit" size="lg" className="w-full" disabled={submitting}>{submitting ? 'Submitting…' : 'Submit registration'}</Button>
         </form>
       </Card>
+      {showPrivacy && <PrivacyNotice meta={meta} onClose={() => setShowPrivacy(false)} />}
     </Shell>
   )
 }
@@ -190,5 +199,47 @@ function EventHeader({ meta, settings }) {
         </span>
       </div>
     </Card>
+  )
+}
+
+// Privacy notice (PROJECT_PLAN §10 / Module 1). States what is collected, why,
+// how long it is kept, and who can access it — the transparency the Data
+// Privacy Act (RA 10173) requires, shown before the attendee consents.
+function PrivacyNotice({ meta, onClose }) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-brand-ink/60 p-4 backdrop-blur-sm" onClick={onClose}>
+      <Card className="max-h-[90vh] w-full max-w-lg overflow-y-auto p-6 animate-rise">
+        <div onClick={(e) => e.stopPropagation()}>
+          <div className="mx-auto grid h-12 w-12 place-items-center rounded-2xl bg-brand-surfaceAlt text-brand-muted"><Lock size={22} /></div>
+          <h2 className="mt-3 text-center font-display text-lg font-bold text-brand-ink">Privacy notice</h2>
+          <p className="mt-1 text-center text-sm text-brand-muted">How your information is handled for {meta?.name || 'this event'}.</p>
+
+          <dl className="mt-5 space-y-4 text-sm leading-relaxed text-brand-slate">
+            <div>
+              <dt className="font-semibold text-brand-ink">What we collect</dt>
+              <dd>Your full name, email address, and school/organization. At the gate we record the times you scan in and out.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Why we collect it</dt>
+              <dd>To track your attendance time and decide certificate eligibility for this event only. It is not used for recruitment or marketing without your separate consent.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Who can access it</dt>
+              <dd>Only the AWS SBG organizing admins, and you — through your personal self-service link. Gate volunteers can scan you in and out but cannot see the attendee list.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">How long we keep it</dt>
+              <dd>Your personal details are deleted after the event's reporting period (about 90 days). Anonymous totals may be kept without identifying you.</dd>
+            </div>
+            <div>
+              <dt className="font-semibold text-brand-ink">Your rights</dt>
+              <dd>You may view your own record any time via your self-service link, and request a correction from the organizers. This is handled under the Data Privacy Act of 2012 (RA 10173).</dd>
+            </div>
+          </dl>
+
+          <Button className="mt-6 w-full" onClick={onClose}>Got it</Button>
+        </div>
+      </Card>
+    </div>
   )
 }

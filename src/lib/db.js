@@ -662,3 +662,53 @@ export async function syncOfflineScan(item) {
   if (res.error) throw new Error(res.error)
   return { eventId, attendeeId, direction }
 }
+
+// ── staff management (§9.2 — the global /staff node, admin-only) ─────────────
+// Firebase Auth users are created out-of-band (Console or the sign-up API) —
+// creating one from the client would sign the current admin OUT and into the
+// new account. So the admin flow is two steps: (1) create the Auth user, then
+// (2) grant a role here by their Auth UID. This mirrors the seed script but
+// from the UI. Only an admin can write /staff (rules), so this is safe.
+
+const staffRef = () => ref(db, 'staff')
+const oneStaffRef = (uid) => ref(db, `staff/${uid}`)
+
+/** Live list of all staff accounts. cb gets [{ uid, role, display_name, email, active }]. */
+export function subscribeStaff(cb, onError) {
+  return onValue(
+    staffRef(),
+    (snap) => {
+      const val = snap.val() || {}
+      const list = Object.entries(val)
+        .map(([uid, v]) => ({ uid, ...v }))
+        .sort((a, b) => (a.display_name || '').localeCompare(b.display_name || ''))
+      cb(list)
+    },
+    (err) => { if (onError) onError(err) },
+  )
+}
+
+/**
+ * Create or update a staff record by Auth UID (admin only). role is
+ * 'admin' | 'gate_staff'. Returns { error } on invalid input.
+ */
+export async function upsertStaff(uid, { role, display_name, email, active = true }) {
+  const id = (uid || '').trim()
+  if (!id) return { error: 'A Firebase Auth UID is required.' }
+  if (role !== 'admin' && role !== 'gate_staff') return { error: 'Role must be admin or gate_staff.' }
+  const existing = await get(oneStaffRef(id))
+  const prev = existing.exists() ? existing.val() : {}
+  await set(oneStaffRef(id), {
+    role,
+    display_name: (display_name || '').trim() || prev.display_name || '',
+    email: (email || '').trim().toLowerCase() || prev.email || '',
+    active: active !== false,
+    created_at: prev.created_at || serverTimestamp(),
+  })
+  return { uid: id }
+}
+
+/** Enable/disable a staff account without deleting it (admin only). */
+export async function setStaffActive(uid, active) {
+  await update(oneStaffRef(uid), { active: !!active })
+}

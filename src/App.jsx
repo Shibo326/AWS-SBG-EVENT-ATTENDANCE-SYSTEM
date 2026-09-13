@@ -9,6 +9,7 @@ import AdminDashboard from './pages/AdminDashboard.jsx'
 import AdminRegistrations from './pages/AdminRegistrations.jsx'
 import AdminSettings from './pages/AdminSettings.jsx'
 import AdminExport from './pages/AdminExport.jsx'
+import AdminStaff from './pages/AdminStaff.jsx'
 import NotFound from './pages/NotFound.jsx'
 
 export default function App() {
@@ -26,6 +27,7 @@ export default function App() {
 
       {/* Admin only */}
       <Route path="/admin" element={<RequireStaff role="admin"><AdminHome /></RequireStaff>} />
+      <Route path="/admin/staff" element={<RequireStaff role="admin"><AdminStaff /></RequireStaff>} />
       <Route path="/admin/event/:eventId" element={<RequireStaff role="admin"><AdminDashboard /></RequireStaff>} />
       <Route path="/admin/event/:eventId/registrations" element={<RequireStaff role="admin"><AdminRegistrations /></RequireStaff>} />
       <Route path="/admin/event/:eventId/settings" element={<RequireStaff role="admin"><AdminSettings /></RequireStaff>} />
