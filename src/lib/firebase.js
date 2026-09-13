@@ -38,9 +38,38 @@ if (!isFirebaseConfigured()) {
   )
 }
 
-export const app = initializeApp(firebaseConfig)
-export const db = getDatabase(app)
-export const auth = getAuth(app)
+// Initialize defensively. When config is missing (no .env yet) we still create
+// an app object with a harmless placeholder so top-level imports never THROW —
+// a throw here blanks the whole page. The app runs in "unconfigured" mode
+// (see isFirebaseConfigured) and the UI falls back to local behavior instead of
+// crashing. Real config swaps this out transparently once .env is filled in.
+const configured = isFirebaseConfigured()
+
+const safeConfig = configured
+  ? firebaseConfig
+  : {
+      apiKey: 'demo-unconfigured',
+      authDomain: 'demo.firebaseapp.com',
+      databaseURL: 'https://demo-default-rtdb.firebaseio.com',
+      projectId: 'demo-unconfigured',
+      appId: 'demo-unconfigured',
+    }
+
+let _app = null
+let _db = null
+let _auth = null
+try {
+  _app = initializeApp(safeConfig)
+  _db = getDatabase(_app)
+  _auth = getAuth(_app)
+} catch (err) {
+  // eslint-disable-next-line no-console
+  console.error('[firebase] Initialization failed; running without a backend.', err)
+}
+
+export const app = _app
+export const db = _db
+export const auth = _auth
 
 // ── Local emulator wiring (opt-in) ──────────────────────────────────────────
 // Set VITE_USE_FIREBASE_EMULATOR=true in .env to point the client at the local

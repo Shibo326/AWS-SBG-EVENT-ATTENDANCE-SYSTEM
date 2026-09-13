@@ -13,15 +13,29 @@ import {
 } from 'firebase/auth'
 import { ref, get } from 'firebase/database'
 import { auth, db } from './firebase.js'
+import { isFirebaseConfigured } from './firebase.js'
 
 const AuthContext = createContext(null)
 
+// When there is no Firebase backend yet (no .env), the app runs in a local
+// preview mode: a stand-in admin is signed in automatically so the UI is fully
+// browsable without a backend. This is DEV-ONLY convenience — with real config,
+// this branch is skipped entirely and Firebase Auth governs access.
+const DEV_NO_BACKEND = !isFirebaseConfigured()
+const DEV_STAFF = { uid: 'dev-admin', role: 'admin', display_name: 'Dev Admin', active: true }
+
 export function AuthProvider({ children }) {
-  const [user, setUser] = useState(null)      // Firebase user or null
-  const [staff, setStaff] = useState(null)    // /staff/{uid} record or null
-  const [loading, setLoading] = useState(true)
+  const [user, setUser] = useState(DEV_NO_BACKEND ? { uid: 'dev-admin' } : null)
+  const [staff, setStaff] = useState(DEV_NO_BACKEND ? DEV_STAFF : null)
+  const [loading, setLoading] = useState(!DEV_NO_BACKEND)
 
   useEffect(() => {
+    // No backend configured, or Firebase failed to init — skip auth wiring and
+    // stay in local preview mode. Nothing to subscribe to.
+    if (DEV_NO_BACKEND || !auth) {
+      setLoading(false)
+      return
+    }
     const unsub = onAuthStateChanged(auth, async (u) => {
       setUser(u)
       if (u) {

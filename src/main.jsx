@@ -5,43 +5,29 @@ import App from './App.jsx'
 import { AuthProvider } from './lib/auth.jsx'
 import './index.css'
 
-// One-time cleanup: this dev port (5173) previously hosted another PWA (a portfolio
-// site) whose service worker keeps serving its cached pages here. Unregister any
-// leftover service worker and clear cache storage for this origin so THIS app loads.
-// Safe no-op once nothing is cached. Runs only in the browser.
-async function purgeStaleServiceWorkers() {
-  try {
-    if ('serviceWorker' in navigator) {
-      const regs = await navigator.serviceWorker.getRegistrations()
-      let removed = 0
-      for (const reg of regs) {
-        // eslint-disable-next-line no-await-in-loop
-        await reg.unregister()
-        removed++
-      }
-      if (removed > 0 && 'caches' in window) {
-        const keys = await caches.keys()
-        await Promise.all(keys.map((k) => caches.delete(k)))
-        // A hard reload is needed once so the page is served fresh, not from the SW.
-        window.location.reload()
-        return true
-      }
-    }
-  } catch {
-    // ignore — cleanup is best-effort
-  }
-  return false
-}
+// Mount the app immediately — nothing blocks the first paint.
+ReactDOM.createRoot(document.getElementById('root')).render(
+  <React.StrictMode>
+    <BrowserRouter>
+      <AuthProvider>
+        <App />
+      </AuthProvider>
+    </BrowserRouter>
+  </React.StrictMode>,
+)
 
-purgeStaleServiceWorkers().then((reloading) => {
-  if (reloading) return // page is reloading; skip mounting to avoid a flash
-  ReactDOM.createRoot(document.getElementById('root')).render(
-    <React.StrictMode>
-      <BrowserRouter>
-        <AuthProvider>
-          <App />
-        </AuthProvider>
-      </BrowserRouter>
-    </React.StrictMode>,
-  )
-})
+// Best-effort, fire-and-forget cleanup: this dev port may have previously hosted
+// another PWA whose service worker/cache could shadow this app. Unregister and
+// clear them AFTER mount. This never reloads the page, so it can never loop.
+if (typeof navigator !== 'undefined' && 'serviceWorker' in navigator) {
+  navigator.serviceWorker
+    .getRegistrations()
+    .then((regs) => regs.forEach((reg) => reg.unregister()))
+    .catch(() => {})
+}
+if (typeof window !== 'undefined' && 'caches' in window) {
+  caches
+    .keys()
+    .then((keys) => keys.forEach((k) => caches.delete(k)))
+    .catch(() => {})
+}
