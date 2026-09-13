@@ -58,10 +58,31 @@ describe('§9.2 — public may create a pending registration but not self-approv
     expect(write).toContain('auth == null')
   })
 
-  it('status/qr_token/claim_token are admin-write-only (§9.3)', () => {
+  it('qr_token stays strictly admin-write-only (§9.3 — no self-issued QR)', () => {
     const node = rules.events.$eventId.attendees.$attendeeId
-    for (const field of ['status', 'qr_token', 'claim_token']) {
-      expect(node[field]['.write']).toContain('admin')
+    // qr_token must NOT be writable by an anonymous public create under any
+    // condition — a QR only exists after admin approval (§9.1).
+    expect(node.qr_token['.write']).toContain('admin')
+    expect(node.qr_token['.write']).not.toContain('auth == null')
+  })
+
+  it('public create may only set status to pending, never approved (§9.2)', () => {
+    const status = rules.events.$eventId.attendees.$attendeeId.status
+    // The anonymous branch is gated on both a fresh node AND the literal
+    // 'pending' value, so a public writer cannot self-approve.
+    expect(status['.write']).toContain('admin')
+    if (status['.write'].includes('auth == null')) {
+      expect(status['.write']).toContain("'pending'")
+      expect(status['.write']).toContain('!data.exists()')
+    }
+  })
+
+  it('claim_token / qr_revoked public writes are create-only (§9.2)', () => {
+    const node = rules.events.$eventId.attendees.$attendeeId
+    for (const field of ['claim_token', 'qr_revoked']) {
+      const w = node[field]['.write']
+      expect(w).toContain('admin')
+      if (w.includes('auth == null')) expect(w).toContain('!data.exists()')
     }
   })
 

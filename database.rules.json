@@ -55,7 +55,7 @@
             "created_at":   { ".validate": "newData.isNumber()" },
 
             "status": {
-              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && auth == null && newData.val() === 'pending')",
               ".validate": "newData.val() === 'pending' || newData.val() === 'approved' || newData.val() === 'rejected'"
             },
             "qr_token": {
@@ -63,11 +63,11 @@
               ".validate": "newData.isString()"
             },
             "qr_revoked": {
-              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && auth == null && newData.val() === false)",
               ".validate": "newData.isBoolean()"
             },
             "claim_token": {
-              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'",
+              ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin' || (!data.exists() && auth == null)",
               ".validate": "newData.isString()"
             },
             "approved_at":  { ".write": "root.child('staff').child(auth.uid).child('role').val() === 'admin'" },

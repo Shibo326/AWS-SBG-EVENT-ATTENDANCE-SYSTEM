@@ -65,6 +65,11 @@ export function computeAttendeeTime(scans, settings, now = Date.now(), correctio
   let isInside = false
   let capped = false
   if (open !== null) {
+    // An open session (no OUT scan) keeps the attendee "inside" as a DATA state
+    // (§6.4 / §12.6): they still appear inside with a complete total until an
+    // admin reconciles, rather than silently vanishing. Time, however, is
+    // bounded by the covering/last window end and the per-session cap, so a
+    // forgotten scan-out can never accrue beyond the countable window.
     isInside = true
     const windowEnd = endOfCoveringOrLastWindow(open, windows, now)
     const sessionCap = open + maxSession
@@ -88,7 +93,9 @@ export function computeAttendeeTime(scans, settings, now = Date.now(), correctio
     capped,
     sessions,
     entryCount: sessions.length,
-    isEligible: total >= required && required > 0 ? true : total >= required,
+    // Eligibility requires a positive threshold AND meeting it. A misconfigured
+    // or unset requirement (0) must NOT make everyone eligible (§6 / BUG-5).
+    isEligible: required > 0 && total >= required,
     remainingMinutes: Math.max(0, required - total),
     requiredMinutes: required,
     progressPct: required > 0 ? Math.min(100, Math.round((total / required) * 100)) : 0,

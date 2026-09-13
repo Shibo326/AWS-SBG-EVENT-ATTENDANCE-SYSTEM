@@ -153,7 +153,7 @@ export async function resolveToken(qrToken) {
 // so they are synchronous and identical in spirit to the old store getters.
 
 export const listAttendeesFrom = (ev) =>
-  mapToArray(ev?.attendees).sort((a, b) => a.full_name.localeCompare(b.full_name))
+  mapToArray(ev?.attendees).sort((a, b) => (a.full_name || '').localeCompare(b.full_name || ''))
 
 export const getAttendeeFrom = (ev, attendeeId) =>
   ev?.attendees?.[attendeeId] ? { id: attendeeId, ...ev.attendees[attendeeId] } : null
@@ -447,6 +447,12 @@ export async function reissueAttendee(eventId, attendeeId) {
  * a client cannot backdate it (§9.3). Returns the scan's push key.
  */
 export async function appendScan(eventId, { attendee_id, direction, outcome, method, gate_id, scanned_by }) {
+  // The rules require scanned_by === auth.uid (§9.3). A string fallback like
+  // 'unknown'/'staff' can NEVER satisfy that, so instead of writing a doomed
+  // record we fail loudly — the caller (processScan) turns this into a normal
+  // rejection / offline-buffer, rather than a confusing permission error.
+  const uid = scanned_by || auth.currentUser?.uid
+  if (!uid) throw new Error('appendScan: no authenticated staff uid')
   const node = push(scansRef(eventId))
   await set(node, {
     attendee_id: attendee_id ?? null,
@@ -455,7 +461,7 @@ export async function appendScan(eventId, { attendee_id, direction, outcome, met
     method: method || 'qr',
     scanned_at: serverTimestamp(),
     gate_id: gate_id || 'gate-1',
-    scanned_by: scanned_by || 'unknown',
+    scanned_by: uid,
   })
   return node.key
 }
@@ -527,7 +533,10 @@ export async function setEventStatus(eventId, status) {
  * @param {object} [opts]   { gateId, scannedBy, method }
  */
 export async function processScan(qrToken, opts = {}) {
-  const { gateId = 'gate-1', scannedBy = 'staff', method = 'qr' } = opts
+  const { gateId = 'gate-1', method = 'qr' } = opts
+  // scanned_by MUST be the authenticated uid (rules §9.3). Prefer the caller's
+  // value, fall back to the live auth user — never a placeholder string.
+  const scannedBy = opts.scannedBy || auth.currentUser?.uid
   const now = Date.now()
   try {
     const ref_ = await resolveToken(qrToken)

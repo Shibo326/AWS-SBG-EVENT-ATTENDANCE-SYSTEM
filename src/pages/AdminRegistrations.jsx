@@ -64,7 +64,7 @@ export default function AdminRegistrations() {
   const q = query.trim().toLowerCase()
   const rows = all
     .filter((a) => a.status === tab)
-    .filter((a) => !q || a.full_name.toLowerCase().includes(q) || a.email.toLowerCase().includes(q))
+    .filter((a) => !q || (a.full_name || '').toLowerCase().includes(q) || (a.email || '').toLowerCase().includes(q))
 
   return (
     <AdminLayout>
@@ -116,16 +116,30 @@ export default function AdminRegistrations() {
             size="sm" variant="success"
             onClick={async () => {
               const n = rows.length
+              let ok = 0
               // Sequential to respect EmailJS free-tier throttling (§11).
-              for (const a of rows) { await approveAndEmail(eventId, a, eventName, uid) }
-              toast(`Approved ${n} attendee${n !== 1 ? 's' : ''} — QR issued`, 'success')
+              // Each is guarded so one failure doesn't abort the rest.
+              for (const a of rows) {
+                try { await approveAndEmail(eventId, a, eventName, uid); ok++ }
+                catch (_) { /* keep going; report the shortfall below */ }
+              }
+              if (ok === n) toast(`Approved ${n} attendee${n !== 1 ? 's' : ''} — QR issued`, 'success')
+              else toast(`Approved ${ok} of ${n} — ${n - ok} failed, try again`, ok ? 'warn' : 'error')
             }}
           >
             Approve all {rows.length}
           </Button>
           <Button
             size="sm" variant="outline"
-            onClick={async () => { const n = rows.length; for (const a of rows) { await rejectAttendee(eventId, a.id) } toast(`Rejected ${n} registration${n !== 1 ? 's' : ''}`, 'warn') }}
+            onClick={async () => {
+              const n = rows.length
+              let ok = 0
+              for (const a of rows) {
+                try { await rejectAttendee(eventId, a.id); ok++ } catch (_) { /* continue */ }
+              }
+              if (ok === n) toast(`Rejected ${n} registration${n !== 1 ? 's' : ''}`, 'warn')
+              else toast(`Rejected ${ok} of ${n} — ${n - ok} failed`, ok ? 'warn' : 'error')
+            }}
           >
             Reject all
           </Button>
@@ -157,8 +171,8 @@ export default function AdminRegistrations() {
                 <div className="flex gap-2">
                   {a.status === 'pending' && (
                     <>
-                      <Button size="sm" variant="success" onClick={async () => { const qr = await approveAndEmail(eventId, a, eventName, uid); toast(`Approved ${a.full_name} — QR issued`, 'success'); setQrFor({ ...a, qr_token: qr, status: 'approved' }) }}>Approve</Button>
-                      <Button size="sm" variant="outline" onClick={async () => { await rejectAttendee(eventId, a.id); toast(`Rejected ${a.full_name}`, 'warn') }}>Reject</Button>
+                      <Button size="sm" variant="success" onClick={async () => { try { const qr = await approveAndEmail(eventId, a, eventName, uid); toast(`Approved ${a.full_name} — QR issued`, 'success'); setQrFor({ ...a, qr_token: qr, status: 'approved' }) } catch (_) { toast(`Could not approve ${a.full_name}. Try again.`, 'error') } }}>Approve</Button>
+                      <Button size="sm" variant="outline" onClick={async () => { try { await rejectAttendee(eventId, a.id); toast(`Rejected ${a.full_name}`, 'warn') } catch (_) { toast(`Could not reject ${a.full_name}. Try again.`, 'error') } }}>Reject</Button>
                     </>
                   )}
                   {a.status === 'approved' && (
@@ -168,7 +182,7 @@ export default function AdminRegistrations() {
                     </>
                   )}
                   {a.status === 'rejected' && (
-                    <Button size="sm" variant="ghost" onClick={async () => { await approveAndEmail(eventId, a, eventName, uid); toast(`Restored ${a.full_name}`, 'success') }}>Restore</Button>
+                    <Button size="sm" variant="ghost" onClick={async () => { try { await approveAndEmail(eventId, a, eventName, uid); toast(`Restored ${a.full_name}`, 'success') } catch (_) { toast(`Could not restore ${a.full_name}. Try again.`, 'error') } }}>Restore</Button>
                   )}
                 </div>
               </li>
@@ -403,15 +417,21 @@ function BulkImport({ eventId, existing, onClose }) {
     setCommitting(true)
     let ok = 0
     for (const r of validRows) {
-      const res = await registerAttendee(eventId, {
-        full_name: r.full_name, email: r.email,
-        organization: r.organization, year_section: r.year_section,
-      })
-      if (!res.error) ok++
+      try {
+        const res = await registerAttendee(eventId, {
+          full_name: r.full_name, email: r.email,
+          organization: r.organization, year_section: r.year_section,
+        })
+        if (!res.error) ok++
+      } catch (_) {
+        // one bad row must not abort the rest of the import
+      }
     }
     setCommitting(false)
     setDone(ok)
-    toast(`Imported ${ok} attendee${ok !== 1 ? 's' : ''} as pending`, 'success')
+    const n = validRows.length
+    if (ok === n) toast(`Imported ${ok} attendee${ok !== 1 ? 's' : ''} as pending`, 'success')
+    else toast(`Imported ${ok} of ${n} — ${n - ok} failed`, ok ? 'warn' : 'error')
   }
 
   return (

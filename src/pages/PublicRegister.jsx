@@ -31,7 +31,7 @@ export default function PublicRegister() {
     )
   }
 
-  if (!event) {
+  if (!event || !event.meta || !event.settings) {
     return (
       <Shell>
         <Card className="p-8 text-center">

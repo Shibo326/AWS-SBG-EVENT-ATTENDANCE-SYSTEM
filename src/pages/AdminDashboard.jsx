@@ -47,7 +47,7 @@ export default function AdminDashboard() {
 
   const attendees = listAttendeesFrom(event)
     .filter((a) => a.status === 'approved')
-    .filter((a) => a.full_name.toLowerCase().includes(query.toLowerCase()) || a.email.toLowerCase().includes(query.toLowerCase()))
+    .filter((a) => (a.full_name || '').toLowerCase().includes(query.toLowerCase()) || (a.email || '').toLowerCase().includes(query.toLowerCase()))
     .filter((a) => !reviewOnly || needsReview(a))
 
   // Total needs-review count folds in concurrent overlaps that eventStatsFrom

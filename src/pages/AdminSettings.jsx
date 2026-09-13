@@ -37,7 +37,7 @@ export default function AdminSettings() {
       </AdminLayout>
     )
   }
-  if (!event) {
+  if (!event || !event.meta || !event.settings) {
     return <AdminLayout><EmptyState title="Event not found" action={<Button to="/admin">Back</Button>} /></AdminLayout>
   }
   return <SettingsForm eventId={eventId} event={event} />
@@ -49,9 +49,9 @@ function SettingsForm({ eventId, event }) {
 
   const meta = event.meta
   const s = event.settings
-  const [name, setName] = useState(meta.name)
-  const [type, setType] = useState(meta.event_type)
-  const [venue, setVenue] = useState(meta.venue)
+  const [name, setName] = useState(meta.name || '')
+  const [type, setType] = useState(meta.event_type || 'seminar')
+  const [venue, setVenue] = useState(meta.venue || '')
   const [validFrom, setValidFrom] = useState(toLocalInput(s.qr_valid_from))
   const [validUntil, setValidUntil] = useState(toLocalInput(s.qr_valid_until))
   const [minHours, setMinHours] = useState(Math.floor(s.min_minutes_required / 60))

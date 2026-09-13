@@ -205,7 +205,7 @@ export default function GateScanner() {
   )
   const lookupList = lookupQuery.trim().length >= LOOKUP_MIN_CHARS
     ? allApprovedAttendees
-        .filter((a) => a.full_name.toLowerCase().includes(lookupQuery.toLowerCase()))
+        .filter((a) => (a.full_name || '').toLowerCase().includes(lookupQuery.toLowerCase()))
         .slice(0, 20)
     : []
 
@@ -295,7 +295,7 @@ export default function GateScanner() {
                         className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-brand-navy p-3 text-left transition-colors hover:border-brand-amber/50 hover:bg-white/5"
                       >
                         <span className="grid h-10 w-10 place-items-center rounded-full bg-brand-amber/20 font-semibold text-brand-amber">
-                          {a.full_name.split(' ').slice(0, 2).map((w) => w[0]).join('')}
+                          {(a.full_name || '?').split(' ').slice(0, 2).map((w) => w[0]).join('')}
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block truncate font-medium">{a.full_name}</span>

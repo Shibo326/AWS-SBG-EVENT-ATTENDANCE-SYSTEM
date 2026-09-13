@@ -296,3 +296,52 @@ describe('formatDuration', () => {
     expect(formatDuration(135)).toBe('2h 15m')
   })
 })
+
+// ── Regression tests from the deep bug hunt ──────────────────────────────────
+
+describe('eligibility guards (BUG-5: required = 0 must not make everyone eligible)', () => {
+  const windows = oneDayWindow()
+
+  it('is NOT eligible when min_minutes_required is 0, even with accumulated time', () => {
+    const scans = [scan('in', 0), scan('out', 2 * HOUR)] // 120 real minutes
+    const r = computeAttendeeTime(scans, { active_windows: windows, min_minutes_required: 0 }, at(3 * HOUR))
+    expect(r.totalMinutes).toBe(120)
+    expect(r.isEligible).toBe(false) // required is 0 -> no certificate threshold
+  })
+
+  it('is NOT eligible with zero time and a zero requirement (no-show, misconfig)', () => {
+    const r = computeAttendeeTime([], { active_windows: windows, min_minutes_required: 0 }, at(HOUR))
+    expect(r.isEligible).toBe(false)
+  })
+
+  it('is eligible when a positive requirement is met', () => {
+    const scans = [scan('in', 0), scan('out', 3 * HOUR)] // 180 min
+    const r = computeAttendeeTime(scans, { active_windows: windows, min_minutes_required: 180 }, at(4 * HOUR))
+    expect(r.isEligible).toBe(true)
+  })
+
+  it('is NOT eligible one minute short of a positive requirement', () => {
+    const scans = [scan('in', 0), scan('out', 3 * HOUR - MIN)] // 179 min
+    const r = computeAttendeeTime(scans, { active_windows: windows, min_minutes_required: 180 }, at(4 * HOUR))
+    expect(r.isEligible).toBe(false)
+  })
+})
+
+describe('open session time is bounded by the window end (total cannot inflate)', () => {
+  const windows = oneDayWindow() // 08:00 -> 20:00 (12h)
+
+  it('caps total at the window end when the attendee never scans out, long past close', () => {
+    const scans = [scan('in', 10 * HOUR)] // in at 18:00, never scanned out
+    // now = next day 10:00, long past the 20:00 window end
+    const r = computeAttendeeTime(scans, { active_windows: windows, min_minutes_required: 60 }, at(DAY + 2 * HOUR))
+    expect(r.totalMinutes).toBe(2 * 60)      // credited only 18:00 -> 20:00 = 2h, not 16h+
+    expect(r.isInside).toBe(true)            // still an open session until reconciled (§6.4)
+  })
+
+  it('credits live time while now is within the window', () => {
+    const scans = [scan('in', 2 * HOUR)] // in at 10:00
+    const r = computeAttendeeTime(scans, { active_windows: windows, min_minutes_required: 60 }, at(4 * HOUR)) // now 12:00
+    expect(r.isInside).toBe(true)
+    expect(r.totalMinutes).toBe(2 * 60)
+  })
+})

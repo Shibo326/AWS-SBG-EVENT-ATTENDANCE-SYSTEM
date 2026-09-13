@@ -102,10 +102,16 @@ export default function StudentSelfService() {
           {/* QR ticket */}
           <Card className="mt-4 p-6 text-center">
             <p className="text-xs font-semibold uppercase tracking-wide text-brand-muted">Your entry ticket</p>
-            <div className="mt-4 flex justify-center">
-              <QRCode value={attendee.qr_token} size={220} />
-            </div>
-            <p className="mt-4 text-sm text-brand-muted">Show this at the gate to scan in and out.</p>
+            {attendee.qr_token ? (
+              <>
+                <div className="mt-4 flex justify-center">
+                  <QRCode value={attendee.qr_token} size={220} />
+                </div>
+                <p className="mt-4 text-sm text-brand-muted">Show this at the gate to scan in and out.</p>
+              </>
+            ) : (
+              <p className="mt-4 text-sm text-brand-muted">Your QR is being prepared. Refresh this page shortly, or contact the organizer if it doesn&rsquo;t appear.</p>
+            )}
           </Card>
 
           {/* Progress */}
